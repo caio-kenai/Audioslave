@@ -410,11 +410,24 @@ bool relaunchUninstallerFromTemp (const Options& options, const juce::File& dir)
 void deleteSelfLater (const juce::File& dir)
 {
     const auto self = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+    const auto uninstaller = dir.getChildFile (brand::uninstallerExecutable);
     ::MoveFileExW (self.getFullPathName().toWideCharPointer(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
-    juce::String command ("cmd.exe /c ping -n 4 127.0.0.1 >nul & del /f /q ");
-    command << win::quoteArgument (self.getFullPathName()) << " & del /f /q "
-            << win::quoteArgument (dir.getChildFile (brand::uninstallerExecutable).getFullPathName()) << " & rmdir "
-            << win::quoteArgument (dir.getFullPathName());
+
+    // Uninstall.exe may still be running (in silent mode it waits for this
+    // copy to finish), so a single attempt can fail: retry for up to a minute
+    // until both executables are gone, then remove the folder if it is empty.
+    // Reboot-time deletion stays scheduled as a fallback.
+    auto literal = [] (const juce::File& f) { return "'" + f.getFullPathName().replace ("'", "''") + "'"; };
+    juce::String script;
+    script << "for ($i = 0; $i -lt 60; $i++) { Start-Sleep -Seconds 1; "
+           << "Remove-Item -LiteralPath " << literal (self) << ", " << literal (uninstaller)
+           << " -Force -ErrorAction SilentlyContinue; "
+           << "if (-not (Test-Path -LiteralPath " << literal (uninstaller) << ") -and -not (Test-Path -LiteralPath "
+           << literal (self) << ")) { break } }; "
+           << "if (-not (Get-ChildItem -LiteralPath " << literal (dir) << " -Force -ErrorAction SilentlyContinue)) "
+           << "{ Remove-Item -LiteralPath " << literal (dir) << " -Force -ErrorAction SilentlyContinue }";
+    const auto command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command "
+                         + win::quoteArgument (script);
     std::wstring mutableLine (command.toWideCharPointer());
     STARTUPINFOW startup {};
     startup.cb = sizeof (startup);
