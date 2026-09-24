@@ -8,8 +8,7 @@
 //
 // Lifetime: the COM object is heap-allocated and reference counted by COM.
 // It forwards to a shared sink guarded by a lock; stop() detaches the sink
-// under that lock, so once stop() returns no callback can reach the owner
-// (Audio Watchdog's watcher could still be running a callback after Stop()).
+// under that lock, so once stop() returns no callback can reach the owner.
 
 #include "audio/models/DeviceChange.h"
 

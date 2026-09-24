@@ -4,8 +4,7 @@
 // CoUninitialize is only balanced against a *successful* CoInitializeEx
 // (S_OK / S_FALSE). RPC_E_CHANGED_MODE means COM is already initialised on
 // this thread with another apartment model: COM is usable, but this object
-// did not initialise it and must not uninitialise it. (Audio Watchdog's
-// ComInitializer called CoUninitialize in that case as well.)
+// did not initialise it and must not uninitialise it.
 
 #include "platform/windows/WinCommon.h"
 

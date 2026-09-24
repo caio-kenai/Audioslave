@@ -91,7 +91,6 @@ public:
             const auto status = scm::query();
             expect (status.error.isEmpty(), status.error);
             logMessage ("    Audioslave service: " + scm::stateName (status.state));
-            logMessage ("    Audio Watchdog service: " + scm::stateName (scm::query (L"AudioWatchdog").state));
         }
     }
 };

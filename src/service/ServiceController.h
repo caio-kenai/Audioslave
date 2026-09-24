@@ -35,8 +35,7 @@ struct Status
     juce::String error;       // query failure (other than "not installed")
 };
 
-// `serviceName` defaults to Audioslave; the legacy Audio Watchdog service is
-// queried by name.
+// `serviceName` defaults to Audioslave.
 Status query (const wchar_t* serviceName = nullptr);
 bool exists (const wchar_t* serviceName = nullptr);
 
