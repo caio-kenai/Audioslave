@@ -1,0 +1,11 @@
+#pragma code_page(65001)
+#include <windows.h>
+#include "AudioslaveVersion.h"
+#include "resource.h"
+
+IDI_APP ICON "logo.ico"
+
+#define AS_FILE_DESCRIPTION "Audioslave Tests"
+#define AS_INTERNAL_NAME "audioslave_tests"
+#define AS_ORIGINAL_FILENAME "audioslave_tests.exe"
+#include "VersionInfo.rc.inc"
