@@ -1,0 +1,89 @@
+#include "platform/windows/WinCommon.h"
+#include "app/TrayIcon.h"
+#include "AudioslaveAssets.h"
+#include "common/Branding.h"
+#include "common/Strings.h"
+
+namespace audioslave
+{
+namespace
+{
+struct Frame
+{
+    int size;
+    const char* normal;
+    int normalSize;
+    const char* paused;
+    int pausedSize;
+};
+
+const Frame frames[] = {
+    { 16, AudioslaveAssets::normal16_png, AudioslaveAssets::normal16_pngSize, AudioslaveAssets::paused16_png, AudioslaveAssets::paused16_pngSize },
+    { 20, AudioslaveAssets::normal20_png, AudioslaveAssets::normal20_pngSize, AudioslaveAssets::paused20_png, AudioslaveAssets::paused20_pngSize },
+    { 24, AudioslaveAssets::normal24_png, AudioslaveAssets::normal24_pngSize, AudioslaveAssets::paused24_png, AudioslaveAssets::paused24_pngSize },
+    { 32, AudioslaveAssets::normal32_png, AudioslaveAssets::normal32_pngSize, AudioslaveAssets::paused32_png, AudioslaveAssets::paused32_pngSize },
+    { 40, AudioslaveAssets::normal40_png, AudioslaveAssets::normal40_pngSize, AudioslaveAssets::paused40_png, AudioslaveAssets::paused40_pngSize },
+    { 48, AudioslaveAssets::normal48_png, AudioslaveAssets::normal48_pngSize, AudioslaveAssets::paused48_png, AudioslaveAssets::paused48_pngSize },
+    { 64, AudioslaveAssets::normal64_png, AudioslaveAssets::normal64_pngSize, AudioslaveAssets::paused64_png, AudioslaveAssets::paused64_pngSize },
+    { 256, AudioslaveAssets::normal256_png, AudioslaveAssets::normal256_pngSize, AudioslaveAssets::paused256_png, AudioslaveAssets::paused256_pngSize },
+};
+} // namespace
+
+TrayIcon::TrayIcon()
+{
+    applyIcon();
+}
+
+int TrayIcon::smallIconSize()
+{
+    const UINT dpi = ::GetDpiForSystem();
+    return ::GetSystemMetricsForDpi (SM_CXSMICON, dpi);
+}
+
+juce::Image TrayIcon::logoImage (bool paused, int size)
+{
+    // Smallest frame that is at least `size` (hand-tuned .ico frames look
+    // better than a downscaled 256 px image).
+    const Frame* chosen = &frames[std::size (frames) - 1];
+    for (const auto& f : frames)
+        if (f.size >= size)
+        {
+            chosen = &f;
+            break;
+        }
+    return paused ? juce::ImageCache::getFromMemory (chosen->paused, chosen->pausedSize)
+                  : juce::ImageCache::getFromMemory (chosen->normal, chosen->normalSize);
+}
+
+void TrayIcon::setPaused (bool paused)
+{
+    if (paused == paused_ && iconSet_)
+        return;
+    paused_ = paused;
+    applyIcon();
+}
+
+void TrayIcon::applyIcon()
+{
+    auto image = logoImage (paused_, smallIconSize());
+    setIconImage (image, image);
+    // Required tooltip text (fixed).
+    setIconTooltip (utf8 (brand::trayTooltipUtf8));
+    iconSet_ = true;
+}
+
+void TrayIcon::mouseDown (const juce::MouseEvent& e)
+{
+    // Needed so the menu closes when the user clicks elsewhere.
+    juce::Process::makeForegroundProcess();
+    if (e.mods.isPopupMenu())
+    {
+        if (onMenu)
+            onMenu();
+    }
+    else if (onOpen)
+    {
+        onOpen();
+    }
+}
+} // namespace audioslave
