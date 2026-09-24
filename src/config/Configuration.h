@@ -1,11 +1,9 @@
 #pragma once
 // config.ini (C:\ProgramData\Audioslave\config.ini).
 //
-// The file stays a plain, hand-editable INI with the same sections and keys
-// as Audio Watchdog, so an existing Audio Watchdog configuration can be
-// imported as-is. Unknown keys are ignored; invalid values keep their
-// defaults and produce a warning (returned to the caller, which logs it once
-// logging is configured).
+// A plain, hand-editable INI. Unknown keys are ignored; invalid values keep
+// their defaults and produce a warning (returned to the caller, which logs
+// it once logging is configured).
 
 #include "logging/Logger.h"
 
@@ -58,7 +56,7 @@ struct ConfigurationLoadResult
 // `createWhenMissing`, written to disk.
 ConfigurationLoadResult loadConfiguration (const juce::File& file, bool createWhenMissing);
 
-// Parses INI text (exposed for tests and the legacy-config import).
+// Parses INI text (exposed for tests).
 ConfigurationLoadResult parseConfiguration (const juce::String& text);
 
 // Writes the whole configuration with comments (UTF-8, CRLF).

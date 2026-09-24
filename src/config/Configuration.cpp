@@ -70,9 +70,6 @@ ConfigurationLoadResult parseConfiguration (const juce::String& text)
     result.fileFound = true;
     auto& cfg = result.config;
 
-    bool sawProtectionKey = false;
-    bool legacyExclusiveDisabled = false;
-
     auto warnBool = [&result] (const juce::String& key, const juce::String& value, bool fallback)
     {
         result.warnings.add ("config: " + key + "=" + value + " is not a boolean; using " + (fallback ? "true" : "false") + ".");
@@ -133,18 +130,8 @@ ConfigurationLoadResult parseConfiguration (const juce::String& text)
         }
         else if (key == "behavior.enforce")
             readBool (cfg.enforce);
-        else if (key == "behavior.exclusivemodedisabled")
-        {
-            // Audio Watchdog 1.0 key, superseded by Features.ExclusiveModeProtection.
-            bool parsed = false;
-            if (parseBool (value, parsed))
-                legacyExclusiveDisabled = parsed;
-        }
         else if (key == "features.exclusivemodeprotection")
-        {
             readBool (cfg.exclusiveModeProtection);
-            sawProtectionKey = true;
-        }
         else if (key == "features.formatstandardization")
             readBool (cfg.formatStandardization);
         else if (key == "features.samplerate")
@@ -165,8 +152,6 @@ ConfigurationLoadResult parseConfiguration (const juce::String& text)
         }
     }
 
-    if (! sawProtectionKey && legacyExclusiveDisabled)
-        cfg.exclusiveModeProtection = false;
     return result;
 }
 

@@ -121,14 +121,6 @@ public:
             expectEquals (r.warnings.size(), 1);
         }
 
-        beginTest ("Legacy Behavior.ExclusiveModeDisabled key");
-        {
-            expect (! parse ("[Behavior]\nExclusiveModeDisabled=true\n").config.exclusiveModeProtection);
-            // The new key wins over the legacy one.
-            expect (parse ("[Features]\nExclusiveModeProtection=true\n[Behavior]\nExclusiveModeDisabled=true\n")
-                        .config.exclusiveModeProtection);
-        }
-
         beginTest ("Inline comments and case-insensitive sections / keys");
         {
             const auto r = parse ("[monitor]\nplayback=false   ; comment\nCheckIntervalSeconds=15 ; s\n");
@@ -136,9 +128,9 @@ public:
             expectEquals (static_cast<int> (r.config.checkIntervalSeconds), 15);
         }
 
-        beginTest ("An Audio Watchdog 1.1 file is read unchanged");
+        beginTest ("A complete file written by hand (CRLF, comments) is read unchanged");
         {
-            const auto r = parse ("; Audio Watchdog configuration\r\n[Features]\r\nExclusiveModeProtection=true\r\n"
+            const auto r = parse ("; Audioslave configuration\r\n[Features]\r\nExclusiveModeProtection=true\r\n"
                                   "FormatStandardization=true\r\nSampleRate=44100\r\nBitDepth=16\r\n[Monitor]\r\n"
                                   "Playback=true\r\nCapture=false\r\nCheckIntervalSeconds=30\r\n[Logging]\r\nEnable=true\r\n"
                                   "Level=WARN\r\n[Behavior]\r\nEnforce=true\r\n");
