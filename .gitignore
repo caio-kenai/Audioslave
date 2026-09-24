@@ -1,69 +1,63 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
-*.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-*.so.*
-
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-# Build directories
+# Build output
 build/
 Build/
 build-*/
-
-# CMake generated files
+out/
+dist/
+cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-Makefile
+CTestTestfile.cmake
 install_manifest.txt
 compile_commands.json
-
-# Temporary files
-*.tmp
-*.log
-*.bak
-*.swp
-
-# vcpkg
-vcpkg_installed/
-
-# debug information files
-*.dwo
-
-# test output & cache
 Testing/
 .cache/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+x64/
+Debug/
+Release/
+*.aps
+
+# Compiled artifacts
+*.exe
+*.dll
+*.lib
+*.a
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.iobj
+*.ipdb
+*.res
+*.pch
+*.gch
+
+# Logs, local state, temporary files
+logs/
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets that must never be committed
+*.pfx
+*.p12
+*.pem
+*.key
+.env
