@@ -17,6 +17,8 @@ class WindowsAudioFormatPolicy final : public IAudioFormatStore
 public:
     ResultCode getDeviceFormat (const juce::String& endpointId, AudioFormat& out) override;
     ResultCode isFormatSupported (const juce::String& endpointId, const AudioFormat& format, bool& supported) override;
+    ResultCode probeFormats (const juce::String& endpointId, const std::vector<AudioFormat>& formats,
+                             std::vector<bool>& supported) override;
     ResultCode setDeviceFormat (const juce::String& endpointId, const AudioFormat& format) override;
 };
 } // namespace audioslave::win

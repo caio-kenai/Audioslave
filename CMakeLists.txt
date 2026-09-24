@@ -146,6 +146,8 @@ add_library(audioslave_core STATIC
     src/core/ExclusiveModePolicy.cpp
     src/core/FormatPolicy.h
     src/core/FormatPolicy.cpp
+    src/core/FormatCompatibility.h
+    src/core/FormatCompatibility.cpp
     src/core/EndpointMemory.h
     src/core/EndpointMemory.cpp
     src/core/EngineStatus.h
@@ -241,6 +243,7 @@ target_sources(audioslave_tests PRIVATE
     tests/LoggerTests.cpp
     tests/ExclusiveModePolicyTests.cpp
     tests/FormatPolicyTests.cpp
+    tests/FormatCompatibilityTests.cpp
     tests/EndpointMemoryTests.cpp
     tests/WatchdogEngineTests.cpp
     tests/ProtocolTests.cpp

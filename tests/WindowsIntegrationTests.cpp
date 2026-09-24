@@ -76,6 +76,44 @@ public:
             }
         }
 
+        beginTest ("Capability probe agrees with the per-format answers and the current format");
+        {
+            win::WindowsAudioFormatPolicy store;
+            FormatPolicy policy (store);
+            for (const auto& e : endpoints)
+            {
+                if (! e.isActive())
+                    continue;
+                AudioFormat current;
+                if (failed (store.getDeviceFormat (e.id, current)))
+                    continue;
+                const auto started = juce::Time::getMillisecondCounterHiRes();
+                const auto caps = policy.probe (e.id, current);
+                const auto ms = juce::Time::getMillisecondCounterHiRes() - started;
+                if (! caps.known)
+                {
+                    expect (caps.code == result::noInterface, e.name + ": " + win::hresultText (caps.code));
+                    logMessage ("    " + e.name + ": capabilities unknown (" + win::hresultText (caps.code) + ")");
+                    continue;
+                }
+                // The batch probe must match the one-by-one answer.
+                for (auto rate : { 44100u, 48000u })
+                    for (auto bits : { std::uint16_t (16), std::uint16_t (24) })
+                    {
+                        bool single = false;
+                        for (const auto& f : FormatPolicy::candidates (rate, bits, current.channels, current.channelMask))
+                        {
+                            bool ok = false;
+                            store.isFormatSupported (e.id, f, ok);
+                            single = single || ok;
+                        }
+                        expect (caps.supports (rate, bits) == single, e.name + " " + juce::String (rate) + "/" + juce::String (bits));
+                    }
+                logMessage ("    " + e.name + ": " + caps.describeRates() + " | " + caps.describeDepths() + " ("
+                            + juce::String (ms, 0) + " ms)");
+            }
+        }
+
         beginTest ("JUCE WASAPI sees the active endpoints");
         {
             const auto juceView = scanJuceWasapiDevices (juce::WASAPIDeviceMode::shared);

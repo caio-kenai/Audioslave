@@ -41,6 +41,22 @@ public:
     // Answered by the driver; independent of the exclusive-mode policy.
     virtual ResultCode isFormatSupported (const juce::String& endpointId, const AudioFormat& format, bool& supported) = 0;
 
+    // Asks about many formats at once (`supported` gets one entry per format).
+    // Implementations may override it to reach the driver only once.
+    virtual ResultCode probeFormats (const juce::String& endpointId, const std::vector<AudioFormat>& formats,
+                                     std::vector<bool>& supported)
+    {
+        supported.assign (formats.size(), false);
+        for (size_t i = 0; i < formats.size(); ++i)
+        {
+            bool ok = false;
+            if (const auto rc = isFormatSupported (endpointId, formats[i], ok); failed (rc))
+                return rc;
+            supported[i] = ok;
+        }
+        return result::ok;
+    }
+
     // Applied by the audio engine immediately (like the Sound control panel).
     virtual ResultCode setDeviceFormat (const juce::String& endpointId, const AudioFormat& format) = 0;
 };

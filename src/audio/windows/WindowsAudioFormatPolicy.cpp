@@ -86,6 +86,28 @@ ResultCode WindowsAudioFormatPolicy::isFormatSupported (const juce::String& endp
     return support.isSupported (format, supported);
 }
 
+ResultCode WindowsAudioFormatPolicy::probeFormats (const juce::String& endpointId, const std::vector<AudioFormat>& formats,
+                                                   std::vector<bool>& supported)
+{
+    supported.assign (formats.size(), false);
+    juce::ComSmartPtr<IMMDevice> device;
+    if (const HRESULT hr = openDevice (endpointId, device); FAILED (hr))
+        return hr;
+
+    // One walk of the device topology for the whole list.
+    WindowsFormatSupport support;
+    if (const HRESULT hr = WindowsFormatSupport::open (device, support); FAILED (hr))
+        return hr;
+    for (size_t i = 0; i < formats.size(); ++i)
+    {
+        bool ok = false;
+        if (const HRESULT hr = support.isSupported (formats[i], ok); FAILED (hr))
+            return hr;
+        supported[i] = ok;
+    }
+    return S_OK;
+}
+
 ResultCode WindowsAudioFormatPolicy::setDeviceFormat (const juce::String& endpointId, const AudioFormat& format)
 {
     if (endpointId.isEmpty())

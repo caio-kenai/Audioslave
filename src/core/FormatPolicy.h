@@ -4,6 +4,7 @@
 // it supports it. Never falls back to a different format.
 
 #include "audio/AudioInterfaces.h"
+#include "core/FormatCompatibility.h"
 
 #include <cstdint>
 #include <vector>
@@ -45,6 +46,10 @@ public:
     // 32-bit may be integer or float).
     static std::vector<AudioFormat> candidates (std::uint32_t sampleRate, std::uint16_t bitDepth,
                                                 std::uint16_t channels, std::uint32_t channelMask);
+
+    // Asks the driver about every selectable rate x depth (for the layout of
+    // `current`: channel count and mask).
+    FormatCapabilities probe (const juce::String& endpointId, const AudioFormat& current);
 
     // The standard rates / depths the device supports (for logs and `devices`).
     juce::String describeSupported (const juce::String& endpointId, const AudioFormat& current);

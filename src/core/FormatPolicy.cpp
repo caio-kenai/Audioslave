@@ -1,6 +1,7 @@
 #include "core/FormatPolicy.h"
 #include "config/Configuration.h"
 
+#include <algorithm>
 #include <optional>
 
 namespace audioslave
@@ -47,26 +48,51 @@ std::vector<AudioFormat> FormatPolicy::candidates (std::uint32_t sampleRate, std
     return out;
 }
 
-juce::String FormatPolicy::describeSupported (const juce::String& endpointId, const AudioFormat& current)
+FormatCapabilities FormatPolicy::probe (const juce::String& endpointId, const AudioFormat& current)
 {
-    juce::StringArray list;
-    for (auto rate : supportedSampleRates)
+    struct Slot
     {
+        std::uint32_t rate;
+        std::uint16_t depth;
+    };
+    std::vector<AudioFormat> formats;
+    std::vector<Slot> slots;
+    for (auto rate : supportedSampleRates)
         for (auto depth : supportedBitDepths)
-        {
             for (const auto& f : candidates (rate, depth, current.channels, current.channelMask))
             {
-                bool ok = false;
-                if (failed (store_.isFormatSupported (endpointId, f, ok)))
-                    return "(could not be determined)";
-                if (ok)
-                {
-                    list.add (describeFormat (f));
-                    break;
-                }
+                formats.push_back (f);
+                slots.push_back ({ rate, depth });
             }
-        }
+
+    FormatCapabilities caps;
+    std::vector<bool> ok;
+    caps.code = store_.probeFormats (endpointId, formats, ok);
+    if (failed (caps.code) || ok.size() != formats.size())
+        return caps;
+    caps.known = true;
+    for (size_t i = 0; i < formats.size(); ++i)
+    {
+        if (! ok[i])
+            continue;
+        auto& depths = caps.depthsByRate[slots[i].rate];
+        if (std::find (depths.begin(), depths.end(), slots[i].depth) == depths.end())
+            depths.push_back (slots[i].depth);
     }
+    for (auto& [rate, depths] : caps.depthsByRate)
+        std::sort (depths.begin(), depths.end());
+    return caps;
+}
+
+juce::String FormatPolicy::describeSupported (const juce::String& endpointId, const AudioFormat& current)
+{
+    const auto caps = probe (endpointId, current);
+    if (! caps.known)
+        return "(could not be determined)";
+    juce::StringArray list;
+    for (const auto& [rate, depths] : caps.depthsByRate)
+        for (auto d : depths)
+            list.add (juce::String (rate) + " Hz / " + juce::String (d) + "-bit");
     return list.isEmpty() ? juce::String ("(none of the standard PCM formats)") : list.joinIntoString (", ");
 }
 
