@@ -4,6 +4,9 @@
 #include "common/Branding.h"
 #include "common/Strings.h"
 
+#include <commctrl.h>
+#include <shellapi.h>
+
 namespace audioslave
 {
 namespace
@@ -35,9 +38,113 @@ const Frame frames[] = {
 };
 } // namespace
 
+namespace
+{
+// JUCE's private callback message for the icon (WM_TRAYNOTIFY in
+// juce_SystemTrayIcon_windows.cpp).
+constexpr UINT juceTrayMessage = WM_USER + 100;
+constexpr UINT_PTR subclassId = 0x41534C56;
+} // namespace
+
+struct TrayIcon::Native
+{
+    static LRESULT CALLBACK proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR refData)
+    {
+        auto* self = reinterpret_cast<TrayIcon*> (refData);
+        if (message == juceTrayMessage)
+        {
+            // Version 4: LOWORD(lParam) is the event. None of them is passed
+            // on: JUCE's handler only understands version 0 events.
+            switch (LOWORD (lParam))
+            {
+                case NIN_SELECT:
+                case NIN_KEYSELECT:
+                    dispatch (*self, false);
+                    break;
+                case WM_CONTEXTMENU:
+                    // The shell allows the foreground change for this event;
+                    // JUCE dismisses the menus of background processes.
+                    ::SetForegroundWindow (hwnd);
+                    dispatch (*self, true);
+                    break;
+                default:
+                    break;
+            }
+            return 0;
+        }
+
+        const auto result = ::DefSubclassProc (hwnd, message, wParam, lParam);
+        static const UINT taskbarCreated = ::RegisterWindowMessageW (L"TaskbarCreated");
+        if (message == taskbarCreated)
+            self->useModernProtocol(); // JUCE has just added the icon again
+        return result;
+    }
+
+    static void dispatch (TrayIcon& icon, bool menu)
+    {
+        // A modal dialog is open: bring it forward instead (JUCE's behaviour).
+        if (icon.isCurrentlyBlockedByAnotherModalComponent())
+        {
+            if (auto* modal = juce::Component::getCurrentlyModalComponent())
+                modal->inputAttemptWhenModal();
+            return;
+        }
+        if (menu)
+        {
+            if (icon.onMenu)
+                icon.onMenu (icon.iconScreenArea());
+        }
+        else if (icon.onOpen)
+        {
+            icon.onOpen();
+        }
+    }
+};
+
 TrayIcon::TrayIcon()
 {
     applyIcon();
+    if (auto hwnd = static_cast<HWND> (getWindowHandle()); hwnd != nullptr
+        && ::SetWindowSubclass (hwnd, Native::proc, subclassId, reinterpret_cast<DWORD_PTR> (this)))
+    {
+        subclassedWindow_ = hwnd;
+        useModernProtocol();
+    }
+}
+
+TrayIcon::~TrayIcon()
+{
+    // Before JUCE removes the icon and restores its own window procedure.
+    if (subclassedWindow_ != nullptr)
+        ::RemoveWindowSubclass (static_cast<HWND> (subclassedWindow_), Native::proc, subclassId);
+}
+
+void TrayIcon::useModernProtocol()
+{
+    if (auto* data = static_cast<const NOTIFYICONDATAW*> (getNativeHandle()))
+    {
+        // A copy: uVersion shares a union with the balloon timeout JUCE uses.
+        auto copy = *data;
+        copy.uVersion = NOTIFYICON_VERSION_4;
+        ::Shell_NotifyIconW (NIM_SETVERSION, &copy);
+    }
+}
+
+juce::Rectangle<int> TrayIcon::iconScreenArea() const
+{
+    const auto* data = static_cast<const NOTIFYICONDATAW*> (getNativeHandle());
+    if (data == nullptr)
+        return {};
+    NOTIFYICONIDENTIFIER id {};
+    id.cbSize = sizeof (id);
+    id.hWnd = data->hWnd;
+    id.uID = data->uID;
+    RECT r {};
+    if (FAILED (::Shell_NotifyIconGetRect (&id, &r)) || r.right <= r.left)
+        return {};
+    // The shell reports physical pixels.
+    return juce::Desktop::getInstance().getDisplays().physicalToLogical (
+        juce::Rectangle<int> (r.left, r.top, r.right - r.left, r.bottom - r.top));
 }
 
 int TrayIcon::smallIconSize()
@@ -76,20 +183,5 @@ void TrayIcon::applyIcon()
     // Required tooltip text (fixed).
     setIconTooltip (utf8 (brand::trayTooltipUtf8));
     iconSet_ = true;
-}
-
-void TrayIcon::mouseDown (const juce::MouseEvent& e)
-{
-    // Needed so the menu closes when the user clicks elsewhere.
-    juce::Process::makeForegroundProcess();
-    if (e.mods.isPopupMenu())
-    {
-        if (onMenu)
-            onMenu();
-    }
-    else if (onOpen)
-    {
-        onOpen();
-    }
 }
 } // namespace audioslave

@@ -123,7 +123,7 @@ void AudioslaveApplication::initialise (const juce::String&)
 
     tray_ = std::make_unique<TrayIcon>();
     tray_->onOpen = [this] { showStatusWindow(); };
-    tray_->onMenu = [this] { showMenu(); };
+    tray_->onMenu = [this] (juce::Rectangle<int> iconArea) { showMenu (iconArea); };
 
     if (serviceMode_)
     {
@@ -251,13 +251,16 @@ void AudioslaveApplication::refresh()
 }
 
 //==============================================================================
-void AudioslaveApplication::showMenu()
+void AudioslaveApplication::showMenu (juce::Rectangle<int> iconArea)
 {
     if (quitting_)
         return;
     auto menu = buildTrayMenu (controller_);
     auto alive = alive_;
-    menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition().withMinimumWidth (280), [this, alive] (int choice)
+    auto options = juce::PopupMenu::Options().withMinimumWidth (280);
+    // Next to the icon (never over it), also inside the hidden-icons flyout.
+    options = iconArea.isEmpty() ? options.withMousePosition() : options.withTargetScreenArea (iconArea);
+    menu.showMenuAsync (options, [this, alive] (int choice)
     {
         if (! alive->load())
             return;

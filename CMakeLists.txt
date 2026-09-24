@@ -169,7 +169,7 @@ target_link_libraries(audioslave_core
     PUBLIC
         audioslave_juce
         audioslave_options
-        ole32 oleaut32 propsys advapi32 user32 shell32 shlwapi)
+        ole32 oleaut32 propsys advapi32 user32 shell32 shlwapi comctl32)
 target_compile_features(audioslave_core PUBLIC cxx_std_20)
 set_target_properties(audioslave_core PROPERTIES FOLDER "Audioslave")
 

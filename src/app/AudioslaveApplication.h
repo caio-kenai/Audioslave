@@ -57,7 +57,7 @@ private:
     void timerCallback() override;
 
     void refresh();
-    void showMenu();
+    void showMenu (juce::Rectangle<int> iconArea);
     void showStatusWindow();
     void pauseMonitoring();
     void resumeMonitoring();
