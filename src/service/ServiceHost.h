@@ -36,6 +36,7 @@ public:
     {
         Mode mode = Mode::console;
         juce::File configFile;              // default: C:\ProgramData\Audioslave\config.ini
+        juce::File deviceStateFile;         // default: devices.json next to the configuration
         juce::String pipeName;              // default: Audioslave.Control
         bool configureLogging = true;       // false in tests
         bool writeEventLog = true;          // false in tests
@@ -46,6 +47,7 @@ public:
         IAudioEndpointEnumerator* enumerator = nullptr;
         IExclusiveModeStore* exclusiveStore = nullptr;
         IAudioFormatStore* formatStore = nullptr;
+        IEndpointAdmin* endpointAdmin = nullptr;
 
         // Engine state changes (the service reports them to the SCM).
         std::function<void (EngineState)> onStateChanged;
@@ -73,8 +75,10 @@ public:
     void requestStop();
 
     // Applies a command synchronously (pipe clients). Returns an error text
-    // when the command was not accepted.
+    // when the command was not accepted; `result` receives the command's
+    // result (ANALYZE, CONFIGURE).
     juce::String apply (ipc::Command command);
+    juce::String apply (ipc::Command command, const juce::var& args, juce::var& result);
 
     [[nodiscard]] ipc::StatusSnapshot snapshot() const;
     [[nodiscard]] bool isStarted() const noexcept { return started_.load(); }
@@ -85,6 +89,10 @@ private:
 
     juce::MemoryBlock handleRequest (const juce::MemoryBlock& payload);
     void reloadConfiguration (bool resumeAfterwards);
+    juce::String configure (const ipc::AudioSettings& settings, juce::var& result);
+    juce::String analyze (const ipc::AudioSettings& settings, juce::var& result);
+    juce::String rename (const juce::String& endpointId, const juce::String& name);
+    Configuration withSettings (Configuration config, const ipc::AudioSettings& settings) const;
     void logFeatures (const Configuration& config);
     void publishStatus();
     int startAndServe();

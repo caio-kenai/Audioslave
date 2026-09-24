@@ -49,13 +49,18 @@ void ControlClient::deliver (std::function<void (const Reply&)> callback, const 
 
 void ControlClient::send (Command command, std::function<void (const Reply&)> onReply)
 {
+    send (command, juce::var(), std::move (onReply));
+}
+
+void ControlClient::send (Command command, const juce::var& args, std::function<void (const Reply&)> onReply)
+{
     int id = 0;
     {
         const juce::ScopedLock sl (pendingLock_);
         id = nextId_++;
         pending_[id] = std::move (onReply);
     }
-    if (! isConnected() || ! sendMessage (encodeRequest (id, commandName (command))))
+    if (! isConnected() || ! sendMessage (encodeRequest (id, commandName (command), args)))
     {
         std::function<void (const Reply&)> callback;
         {
@@ -74,12 +79,17 @@ void ControlClient::send (Command command, std::function<void (const Reply&)> on
 
 Reply ControlClient::request (Command command, int timeoutMs)
 {
+    return request (command, juce::var(), timeoutMs);
+}
+
+Reply ControlClient::request (Command command, const juce::var& args, int timeoutMs)
+{
     // A blocking wait on the message thread would dead-lock GUI clients.
     jassert (! onMessageThread_);
 
     auto done = std::make_shared<juce::WaitableEvent>();
     auto result = std::make_shared<Reply>();
-    send (command, [done, result] (const Reply& r)
+    send (command, args, [done, result] (const Reply& r)
     {
         *result = r;
         done->signal();
@@ -145,6 +155,7 @@ void ControlClient::messageReceived (const juce::MemoryBlock& message)
     reply.ok = decoded.ok;
     reply.error = decoded.error;
     reply.status = decoded.status;
+    reply.result = decoded.result;
     deliver (std::move (callback), reply);
 }
 } // namespace audioslave::ipc

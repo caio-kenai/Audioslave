@@ -4,6 +4,7 @@
 #include "audio/windows/WindowsAudioDeviceWatcher.h"
 #include "audio/windows/WindowsAudioEndpointEnumerator.h"
 #include "audio/windows/WindowsAudioFormatPolicy.h"
+#include "audio/windows/WindowsEndpointAdmin.h"
 #include "audio/windows/WindowsExclusiveModePolicy.h"
 #include "common/Branding.h"
 #include "ipc/PipeServer.h"
@@ -32,6 +33,8 @@ struct ServiceHost::Impl
     win::WindowsAudioEndpointEnumerator windowsEnumerator;
     win::WindowsExclusiveModePolicy windowsExclusive;
     win::WindowsAudioFormatPolicy windowsFormat;
+    win::WindowsEndpointAdmin windowsAdmin;
+    std::unique_ptr<DeviceStateStore> deviceState;
 
     std::unique_ptr<WatchdogEngine> engine;
     win::WindowsAudioDeviceWatcher watcher;
@@ -43,6 +46,8 @@ ServiceHost::ServiceHost (Options options) : impl_ (std::make_unique<Impl>()), o
 {
     if (options_.configFile == juce::File())
         options_.configFile = paths::configFile();
+    if (options_.deviceStateFile == juce::File())
+        options_.deviceStateFile = options_.configFile.getSiblingFile ("devices.json");
     if (options_.pipeName.isEmpty())
         options_.pipeName = brand::controlPipeName;
 }
@@ -147,9 +152,15 @@ int ServiceHost::startAndServe()
     auto& enumerator = options_.enumerator != nullptr ? *options_.enumerator : impl_->windowsEnumerator;
     auto& exclusive = options_.exclusiveStore != nullptr ? *options_.exclusiveStore : impl_->windowsExclusive;
     auto& format = options_.formatStore != nullptr ? *options_.formatStore : impl_->windowsFormat;
+    impl_->deviceState = std::make_unique<DeviceStateStore> (options_.deviceStateFile);
+    for (const auto& r : impl_->deviceState->all())
+        if (r.disabled)
+            log.info ("Device disabled by Audioslave earlier: " + r.name + " (" + r.reason + "). ID: " + r.id);
 
     WatchdogEngine::Options engineOptions;
     engineOptions.workerThreadScope = [] { return std::make_shared<win::ScopedComInit> (COINIT_MULTITHREADED); };
+    engineOptions.admin = options_.endpointAdmin != nullptr ? options_.endpointAdmin : &impl_->windowsAdmin;
+    engineOptions.deviceState = impl_->deviceState.get();
     impl_->engine = std::make_unique<WatchdogEngine> (enumerator, exclusive, format, impl_->config, engineOptions);
     impl_->engine->addListener (this);
     if (! impl_->engine->start())
@@ -215,6 +226,12 @@ void ServiceHost::processQueuedRequests()
 
 juce::String ServiceHost::apply (ipc::Command command)
 {
+    juce::var ignored;
+    return apply (command, {}, ignored);
+}
+
+juce::String ServiceHost::apply (ipc::Command command, const juce::var& args, juce::var& result)
+{
     const juce::ScopedLock sl (controlLock_);
     auto* engine = impl_->engine.get();
     if (engine == nullptr || stopping_.load())
@@ -237,14 +254,115 @@ juce::String ServiceHost::apply (ipc::Command command)
             log.info ("Configuration reloaded.");
             return {};
         case ipc::Command::scan:
+            // "Verificar agora": ask every driver for its formats again too.
+            engine->forgetCapabilities();
             engine->requestFullScan();
             return engine->getState() == EngineState::paused ? juce::String ("monitoring is paused") : juce::String();
         case ipc::Command::stop:
             log.info ("Stop requested through the control channel.");
             requestStop();
             return {};
+        case ipc::Command::analyze:
+            return analyze (ipc::audioSettingsFromVar (args), result);
+        case ipc::Command::configure:
+            return configure (ipc::audioSettingsFromVar (args), result);
+        case ipc::Command::rename:
+            return rename (args.getProperty ("id", {}).toString(), args.getProperty ("name", {}).toString());
+        case ipc::Command::enable:
+            return engine->enableDevice (args.getProperty ("id", {}).toString());
     }
     return "unknown command";
+}
+
+Configuration ServiceHost::withSettings (Configuration cfg, const ipc::AudioSettings& s) const
+{
+    cfg.formatStandardization = s.formatStandardization;
+    cfg.sampleRate = s.sampleRate;
+    cfg.bitDepth = s.bitDepth;
+    cfg.disableIncompatibleDevices = s.disableIncompatibleDevices;
+    if (! s.disableIncompatibleDevices)
+        cfg.disableConfirmedFor = {};
+    else if (s.confirmDisable)
+        cfg.disableConfirmedFor = formatTargetKey (cfg);
+    return cfg;
+}
+
+juce::String ServiceHost::analyze (const ipc::AudioSettings& settings, juce::var& result)
+{
+    if (! isSupportedSampleRate (settings.sampleRate) || ! isSupportedBitDepth (settings.bitDepth))
+        return "unsupported sample rate or bit depth";
+    const auto candidate = withSettings (impl_->engine->getConfig(), settings);
+    const auto devices = impl_->engine->analyze (candidate);
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("devices", ipc::toVar (devices));
+    result = juce::var (o);
+    return {};
+}
+
+juce::String ServiceHost::configure (const ipc::AudioSettings& settings, juce::var& result)
+{
+    if (! isSupportedSampleRate (settings.sampleRate) || ! isSupportedBitDepth (settings.bitDepth))
+        return "unsupported sample rate or bit depth";
+
+    auto& log = Logger::instance();
+    // Start from the file, so every other setting (and hand edits) is kept.
+    auto loaded = loadConfiguration (options_.configFile, false);
+    const auto cfg = withSettings (loaded.config, settings);
+    if (const auto saved = saveConfiguration (cfg, options_.configFile); saved.failed())
+    {
+        log.error ("Could not save the configuration: " + saved.getErrorMessage());
+        return "could not save the configuration: " + saved.getErrorMessage();
+    }
+    log.info ("Configuration changed by the user: format standardization "
+              + juce::String (cfg.formatStandardization ? "ON (" + describeFormatTarget (cfg) + ")" : juce::String ("OFF"))
+              + ", disable incompatible devices " + (cfg.disableIncompatibleDevices ? "ON" : "OFF")
+              + (cfg.disableIncompatibleDevices ? juce::String (disablePolicyConfirmed (cfg) ? " (confirmed)" : " (not confirmed)")
+                                                : juce::String()));
+
+    impl_->config = cfg;
+    log.setLevel (cfg.logLevel);
+    impl_->engine->setConfig (cfg);
+    logFeatures (cfg);
+
+    // Applied now, so the window can show what happened to every device.
+    const auto report = impl_->engine->scanOnce (ScanKind::full, true);
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("devices", ipc::toVar (report.devices));
+    o->setProperty ("paused", report.paused);
+    result = juce::var (o);
+    publishStatus();
+    return {};
+}
+
+juce::String ServiceHost::rename (const juce::String& endpointId, const juce::String& name)
+{
+    if (endpointId.isEmpty())
+        return "no device given";
+    auto& log = Logger::instance();
+    auto cfg = loadConfiguration (options_.configFile, false).config;
+    const auto text = name.trim().replaceCharacters ("\r\n\t", "   ").trim();
+
+    // Drop the entry under any spelling of the id.
+    for (auto it = cfg.deviceNames.begin(); it != cfg.deviceNames.end();)
+        it = it->first.equalsIgnoreCase (endpointId) ? cfg.deviceNames.erase (it) : std::next (it);
+
+    if (text.isNotEmpty())
+    {
+        if (const auto error = impl_->engine->renameDevice (endpointId, text); error.isNotEmpty())
+            return error;
+        cfg.deviceNames[endpointId] = text;
+    }
+    else
+    {
+        log.info ("The kept name of " + endpointId + " was released; Windows' name is no longer enforced.");
+    }
+    if (const auto saved = saveConfiguration (cfg, options_.configFile); saved.failed())
+        return "could not save the configuration: " + saved.getErrorMessage();
+    impl_->config = cfg;
+    impl_->engine->setConfig (cfg);
+    impl_->engine->requestRescan();
+    publishStatus();
+    return {};
 }
 
 void ServiceHost::reloadConfiguration (bool resumeAfterwards)
@@ -293,6 +411,10 @@ ipc::StatusSnapshot ServiceHost::snapshot() const
     s.formatStandardization = cfg.formatStandardization;
     s.enforce = cfg.enforce;
     s.formatTarget = describeFormatTarget (cfg);
+    s.sampleRate = static_cast<int> (cfg.sampleRate);
+    s.bitDepth = static_cast<int> (cfg.bitDepth);
+    s.disableIncompatibleDevices = cfg.disableIncompatibleDevices;
+    s.disablePolicyConfirmed = disablePolicyConfirmed (cfg);
     s.checkIntervalSeconds = static_cast<int> (cfg.checkIntervalSeconds);
 
     if (impl_->engine != nullptr)
@@ -306,6 +428,8 @@ ipc::StatusSnapshot ServiceHost::snapshot() const
         s.totalExclusiveFixes = status.totalExclusiveFixes;
         s.totalFormatChanges = status.totalFormatChanges;
         s.endpoints = status.endpoints;
+        s.pendingDisable = status.pendingDisable;
+        s.events = status.events;
     }
     if (impl_->pipe != nullptr)
         s.connectedClients = impl_->pipe->getNumConnections();
@@ -328,9 +452,14 @@ juce::MemoryBlock ServiceHost::handleRequest (const juce::MemoryBlock& payload)
     if (*command != ipc::Command::status)
         Logger::instance().info ("Control channel: " + ipc::commandName (*command) + " requested.");
 
-    const auto error = apply (*command);
+    // Commands that reach the devices run on this pipe thread.
+    const win::ScopedComInit com (COINIT_MULTITHREADED);
+    juce::var result;
+    const auto error = apply (*command, message.args, result);
+    if (error.isNotEmpty() && *command != ipc::Command::scan)
+        Logger::instance().warn ("Control channel: " + ipc::commandName (*command) + " failed: " + error);
     const auto status = snapshot();
-    return ipc::encodeResponse (message.id, error.isEmpty(), error, &status);
+    return ipc::encodeResponse (message.id, error.isEmpty(), error, &status, result);
 }
 
 void ServiceHost::publishStatus()

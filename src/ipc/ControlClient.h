@@ -20,6 +20,7 @@ struct Reply
     bool ok = false;         // the service accepted the command
     juce::String error;
     std::optional<StatusSnapshot> status;
+    juce::var result;        // command result (ANALYZE, CONFIGURE)
 };
 
 class ControlClient final : private juce::InterprocessConnection
@@ -46,9 +47,11 @@ public:
     // Asynchronous request: `onReply` runs on the callback thread (message
     // thread for GUI clients) exactly once, also when the connection drops.
     void send (Command command, std::function<void (const Reply&)> onReply);
+    void send (Command command, const juce::var& args, std::function<void (const Reply&)> onReply);
 
     // Blocking request for console clients (callbacksOnMessageThread = false).
     Reply request (Command command, int timeoutMs = 10000);
+    Reply request (Command command, const juce::var& args, int timeoutMs = 10000);
 
     void setListener (Listener* listener) { listener_ = listener; }
 

@@ -18,7 +18,9 @@ public:
         MockEnumerator enumerator;
         MockExclusiveStore exclusive;
         MockFormatStore format;
+        MockEndpointAdmin admin { enumerator };
         juce::File configFile = tempFile ("host-config.ini");
+        juce::File stateFile = tempFile ("host-devices.json");
         juce::String pipeName = uniqueName ("Audioslave.HostTest");
         juce::CriticalSection statesLock;
         juce::Array<EngineState> states;
@@ -43,6 +45,7 @@ public:
             if (thread.joinable())
                 thread.join();
             configFile.deleteFile();
+            stateFile.deleteFile();
         }
 
         void start()
@@ -57,6 +60,8 @@ public:
             o.enumerator = &enumerator;
             o.exclusiveStore = &exclusive;
             o.formatStore = &format;
+            o.endpointAdmin = &admin;
+            o.deviceStateFile = stateFile;
             o.onStateChanged = [this] (EngineState s)
             {
                 const juce::ScopedLock sl (statesLock);
@@ -145,6 +150,82 @@ public:
             saveConfiguration (cfg, f.configFile);
             f.host->requestReload();
             expect (waitUntil ([&] { return f.host->snapshot().checkIntervalSeconds == 120; }));
+        }
+
+        beginTest ("Settings from the window: analyse, apply (confirmed or not), rename, enable");
+        {
+            Fixture f;
+            f.enumerator.endpoints = { endpoint ("r1"), endpoint ("cam", EndpointFlow::capture) };
+            f.exclusive.allow["r1"] = false;
+            f.format.current["r1"] = fmt (44100, 16, 16);
+            f.format.current["cam"] = fmt (48000, 16, 16);
+            f.format.supportedBy["r1"] = { { 44100, 16, 16, false }, { 48000, 24, 24, false } };
+            f.format.supportedBy["cam"] = { { 48000, 16, 16, false } };
+            f.start();
+            expect (waitUntil ([&] { return f.startedCallback.load(); }));
+            ipc::ControlClient client (false, f.pipeName);
+            expect (client.connect());
+
+            ipc::AudioSettings s;
+            s.formatStandardization = true;
+            s.sampleRate = 48000;
+            s.bitDepth = 24;
+            s.disableIncompatibleDevices = true;
+
+            // Preview: nothing changes.
+            auto reply = client.request (ipc::Command::analyze, ipc::toVar (s));
+            expect (reply.ok, reply.error);
+            auto devices = ipc::deviceReportsFromVar (reply.result.getProperty ("devices", {}));
+            expectEquals (static_cast<int> (devices.size()), 2);
+            for (const auto& d : devices)
+                expect (d.action == (d.id == "cam" ? DeviceAction::disable : DeviceAction::apply), d.id);
+            expectEquals (f.format.writeCalls.load(), 0);
+            expect (! loadConfiguration (f.configFile, false).config.formatStandardization);
+
+            // Applied without the confirmation: saved, format applied, nothing disabled.
+            reply = client.request (ipc::Command::configure, ipc::toVar (s));
+            expect (reply.ok, reply.error);
+            auto saved = loadConfiguration (f.configFile, false).config;
+            expect (saved.formatStandardization && saved.disableIncompatibleDevices);
+            expect (! disablePolicyConfirmed (saved));
+            expectEquals (static_cast<int> (f.format.current["r1"].sampleRate), 48000);
+            expectEquals (f.admin.disableCalls.load(), 0);
+            expectEquals (static_cast<int> (reply.status->pendingDisable.size()), 1);
+            devices = ipc::deviceReportsFromVar (reply.result.getProperty ("devices", {}));
+            for (const auto& d : devices)
+                if (d.id == "cam")
+                    expect (d.action == DeviceAction::pending);
+
+            // Confirmed: disabled, recorded, kept after a restart of the service.
+            s.confirmDisable = true;
+            reply = client.request (ipc::Command::configure, ipc::toVar (s));
+            expect (reply.ok, reply.error);
+            saved = loadConfiguration (f.configFile, false).config;
+            expectEquals (saved.disableConfirmedFor, juce::String ("48000:24"));
+            expectEquals (f.admin.disableCalls.load(), 1);
+            expect (f.stateFile.existsAsFile());
+            expect (DeviceStateStore (f.stateFile).get ("cam").has_value());
+            expect (reply.status->pendingDisable.empty());
+
+            // Rename: applied now and kept in the configuration.
+            reply = client.request (ipc::Command::rename, juce::JSON::parse ("{\"id\":\"r1\",\"name\":\"Caixas\"}"));
+            expect (reply.ok, reply.error);
+            expectEquals (f.enumerator.endpoints[0].description, juce::String ("Caixas"));
+            expectEquals (customDeviceName (loadConfiguration (f.configFile, false).config, "r1"), juce::String ("Caixas"));
+            reply = client.request (ipc::Command::rename, juce::JSON::parse ("{\"id\":\"r1\",\"name\":\"\"}"));
+            expect (reply.ok, reply.error);
+            expect (customDeviceName (loadConfiguration (f.configFile, false).config, "r1").isEmpty());
+
+            // The user enables the disabled device again.
+            reply = client.request (ipc::Command::enable, juce::JSON::parse ("{\"id\":\"cam\"}"));
+            expect (reply.ok, reply.error);
+            expect (f.enumerator.endpoints[1].state == EndpointState::active);
+
+            // Invalid values are refused and nothing is saved.
+            s.sampleRate = 12345;
+            reply = client.request (ipc::Command::configure, ipc::toVar (s));
+            expect (! reply.ok);
+            expectEquals (static_cast<int> (loadConfiguration (f.configFile, false).config.sampleRate), 48000);
         }
 
         beginTest ("Invalid commands are rejected");
