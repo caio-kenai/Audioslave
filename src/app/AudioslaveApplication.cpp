@@ -151,6 +151,7 @@ void AudioslaveApplication::shutdown()
 
     if (session_ != nullptr)
         session_->stopListening();
+    juce::PopupMenu::dismissAllActiveMenus();
     window_.reset();
     tray_.reset();
 
@@ -255,12 +256,18 @@ void AudioslaveApplication::showMenu (juce::Rectangle<int> iconArea)
 {
     if (quitting_)
         return;
-    auto menu = buildTrayMenu (controller_);
     auto alive = alive_;
+    TrayMenuActions actions;
+    // Run in place: the menu stays open and follows the live status.
+    actions.pause = [this, alive] { if (alive->load()) pauseMonitoring(); };
+    actions.resume = [this, alive] { if (alive->load()) resumeMonitoring(); };
+    actions.scan = [this, alive] { if (alive->load()) scanNow(); };
+    actions.live = [this, alive]() -> const TrayController* { return alive->load() && ! quitting_ ? &controller_ : nullptr; };
+
     auto options = juce::PopupMenu::Options().withMinimumWidth (280);
     // Next to the icon (never over it), also inside the hidden-icons flyout.
     options = iconArea.isEmpty() ? options.withMousePosition() : options.withTargetScreenArea (iconArea);
-    menu.showMenuAsync (options, [this, alive] (int choice)
+    buildTrayMenu (controller_, actions).showMenuAsync (options, [this, alive] (int choice)
     {
         if (! alive->load())
             return;
@@ -268,9 +275,6 @@ void AudioslaveApplication::showMenu (juce::Rectangle<int> iconArea)
         {
             case menuTitle:
             case menuOpen:   showStatusWindow(); break;
-            case menuPause:  pauseMonitoring(); break;
-            case menuResume: resumeMonitoring(); break;
-            case menuScan:   scanNow(); break;
             case menuExit:   confirmExit(); break;
             default: break;
         }

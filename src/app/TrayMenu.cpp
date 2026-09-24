@@ -3,19 +3,26 @@
 #include "app/TrayIcon.h"
 #include "common/Branding.h"
 
+#include <memory>
+
 namespace audioslave
 {
 namespace
 {
+constexpr int liveRefreshMs = 150;
+
 // Menu header: logo, product name and the status pill. Clicking it opens
-// the status window.
-class MenuHeader final : public juce::PopupMenu::CustomComponent
+// the status window. Follows the live status while the menu is open.
+class MenuHeader final : public juce::PopupMenu::CustomComponent, private juce::Timer
 {
 public:
-    MenuHeader (juce::String status, juce::Colour colour)
-        : juce::PopupMenu::CustomComponent (true), status_ (std::move (status)), colour_ (colour)
+    MenuHeader (const TrayController& snapshot, std::function<const TrayController*()> live)
+        : juce::PopupMenu::CustomComponent (true), live_ (std::move (live))
     {
         logo_ = TrayIcon::logoImage (false, 128);
+        read (snapshot);
+        if (live_)
+            startTimer (liveRefreshMs);
     }
 
     void getIdealSize (int& width, int& height) override
@@ -48,9 +55,100 @@ public:
     }
 
 private:
+    void read (const TrayController& c)
+    {
+        const auto ui = c.uiState();
+        status_ = TrayController::uiStateText (ui);
+        colour_ = trayStateColour (ui);
+    }
+
+    void timerCallback() override
+    {
+        if (const auto* c = live_())
+        {
+            const auto before = status_;
+            read (*c);
+            if (status_ != before)
+                repaint();
+        }
+    }
+
+    std::function<const TrayController*()> live_;
     juce::String status_;
     juce::Colour colour_;
     juce::Image logo_;
+};
+
+// An action that runs without closing the menu. It is drawn exactly like a
+// regular item (same LookAndFeel call) and re-reads its enabled state from
+// the live controller, so e.g. "Pausar" greys out and "Retomar" lights up as
+// soon as the service confirms the pause.
+class InPlaceItem final : public juce::PopupMenu::CustomComponent, private juce::Timer
+{
+public:
+    using EnabledFn = std::function<bool (const TrayController::MenuModel&)>;
+
+    InPlaceItem (juce::String text, theme::Icon icon, const TrayController& snapshot, EnabledFn enabledFn,
+                 std::function<void()> action, std::function<const TrayController*()> live)
+        : juce::PopupMenu::CustomComponent (false),
+          text_ (std::move (text)),
+          icon_ (theme::makeIcon (icon, theme::text)),
+          enabledFn_ (std::move (enabledFn)),
+          action_ (std::move (action)),
+          live_ (std::move (live))
+    {
+        enabled_ = enabledFn_ (snapshot.menu());
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        if (live_)
+            startTimer (liveRefreshMs);
+    }
+
+    void getIdealSize (int& width, int& height) override
+    {
+        getLookAndFeel().getIdealPopupMenuItemSize (text_, false, -1, width, height);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const bool highlighted = enabled_ && (isItemHighlighted() || isMouseOver (true));
+        getLookAndFeel().drawPopupMenuItem (g, getLocalBounds(), false, enabled_, highlighted, false, false, text_, {},
+                                            icon_.get(), nullptr);
+    }
+
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { repaint(); }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (! enabled_ || ! getLocalBounds().contains (e.getPosition()) || ! action_)
+            return;
+        // Disable immediately (the controller turns busy until the reply);
+        // the timer re-reads the real state.
+        enabled_ = false;
+        repaint();
+        action_();
+    }
+
+private:
+    void timerCallback() override
+    {
+        if (const auto* c = live_())
+        {
+            const bool now = enabledFn_ (c->menu());
+            if (now != enabled_)
+            {
+                enabled_ = now;
+                repaint();
+            }
+        }
+    }
+
+    juce::String text_;
+    std::unique_ptr<juce::Drawable> icon_;
+    EnabledFn enabledFn_;
+    std::function<void()> action_;
+    std::function<const TrayController*()> live_;
+    bool enabled_ = false;
 };
 } // namespace
 
@@ -66,15 +164,14 @@ juce::Colour trayStateColour (TrayController::UiState s)
     }
 }
 
-juce::PopupMenu buildTrayMenu (const TrayController& controller)
+juce::PopupMenu buildTrayMenu (const TrayController& controller, const TrayMenuActions& actions)
 {
     const auto m = controller.menu();
-    const auto ui = controller.uiState();
 
     juce::PopupMenu menu;
     juce::PopupMenu::Item header;
     header.itemID = menuTitle;
-    header.customComponent = new MenuHeader (TrayController::uiStateText (ui), trayStateColour (ui));
+    header.customComponent = new MenuHeader (controller, actions.live);
     menu.addItem (std::move (header));
     menu.addSeparator();
 
@@ -88,10 +185,19 @@ juce::PopupMenu buildTrayMenu (const TrayController& controller)
             i.colour = colour;
         menu.addItem (std::move (i));
     };
+    auto inPlace = [&] (int id, const juce::String& text, theme::Icon icon, InPlaceItem::EnabledFn enabled,
+                        const std::function<void()>& action)
+    {
+        juce::PopupMenu::Item i (text);
+        i.itemID = id;
+        i.customComponent = new InPlaceItem (text, icon, controller, std::move (enabled), action, actions.live);
+        menu.addItem (std::move (i));
+    };
+
     // The status is the pill in the header; both pause and resume are listed.
-    item (menuPause, "Pausar monitoramento", m.pauseEnabled, theme::Icon::pause, theme::text);
-    item (menuResume, "Retomar monitoramento", m.resumeEnabled, theme::Icon::play, theme::text);
-    item (menuScan, "Verificar agora", m.scanEnabled, theme::Icon::refresh, theme::text);
+    inPlace (menuPause, "Pausar monitoramento", theme::Icon::pause, [] (const auto& mm) { return mm.pauseEnabled; }, actions.pause);
+    inPlace (menuResume, "Retomar monitoramento", theme::Icon::play, [] (const auto& mm) { return mm.resumeEnabled; }, actions.resume);
+    inPlace (menuScan, "Verificar agora", theme::Icon::refresh, [] (const auto& mm) { return mm.scanEnabled; }, actions.scan);
     menu.addSeparator();
     item (menuOpen, "Abrir", true, theme::Icon::window, theme::text);
     menu.addSeparator();
