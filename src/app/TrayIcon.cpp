@@ -36,6 +36,15 @@ const Frame frames[] = {
     { 128, AudioslaveAssets::normal128_png, AudioslaveAssets::normal128_pngSize, AudioslaveAssets::paused128_png, AudioslaveAssets::paused128_pngSize },
     { 256, AudioslaveAssets::normal256_png, AudioslaveAssets::normal256_pngSize, AudioslaveAssets::paused256_png, AudioslaveAssets::paused256_pngSize },
 };
+
+// Smallest frame that is at least `size` (exact for every shell icon size).
+const Frame& frameFor (int size)
+{
+    for (const auto& f : frames)
+        if (f.size >= size)
+            return f;
+    return frames[std::size (frames) - 1];
+}
 } // namespace
 
 namespace
@@ -74,6 +83,9 @@ struct TrayIcon::Native
         }
 
         const auto result = ::DefSubclassProc (hwnd, message, wParam, lParam);
+        if (message == WM_DISPLAYCHANGE || message == WM_SETTINGCHANGE || message == WM_DPICHANGED)
+            if (self->iconSet_ && smallIconSize() != self->iconSize_)
+                self->applyIcon(); // new scale: use the frame made for it
         static const UINT taskbarCreated = ::RegisterWindowMessageW (L"TaskbarCreated");
         if (message == taskbarCreated)
             self->useModernProtocol(); // JUCE has just added the icon again
@@ -149,23 +161,22 @@ juce::Rectangle<int> TrayIcon::iconScreenArea() const
 
 int TrayIcon::smallIconSize()
 {
-    const UINT dpi = ::GetDpiForSystem();
+    // The notification area follows the DPI of the taskbar's monitor, which
+    // can differ from the system DPI (another monitor, or the scale changed
+    // since logon).
+    UINT dpi = 0;
+    if (const auto taskbar = ::FindWindowW (L"Shell_TrayWnd", nullptr))
+        dpi = ::GetDpiForWindow (taskbar);
+    if (dpi == 0)
+        dpi = ::GetDpiForSystem();
     return ::GetSystemMetricsForDpi (SM_CXSMICON, dpi);
 }
 
 juce::Image TrayIcon::logoImage (bool paused, int size)
 {
-    // Smallest frame that is at least `size` (hand-tuned .ico frames look
-    // better than a downscaled 256 px image).
-    const Frame* chosen = &frames[std::size (frames) - 1];
-    for (const auto& f : frames)
-        if (f.size >= size)
-        {
-            chosen = &f;
-            break;
-        }
-    return paused ? juce::ImageCache::getFromMemory (chosen->paused, chosen->pausedSize)
-                  : juce::ImageCache::getFromMemory (chosen->normal, chosen->normalSize);
+    const auto& f = frameFor (size);
+    return paused ? juce::ImageCache::getFromMemory (f.paused, f.pausedSize)
+                  : juce::ImageCache::getFromMemory (f.normal, f.normalSize);
 }
 
 void TrayIcon::setPaused (bool paused)
@@ -178,10 +189,42 @@ void TrayIcon::setPaused (bool paused)
 
 void TrayIcon::applyIcon()
 {
-    auto image = logoImage (paused_, smallIconSize());
-    setIconImage (image, image);
-    // Required tooltip text (fixed).
-    setIconTooltip (utf8 (brand::trayTooltipUtf8));
-    iconSet_ = true;
+    const int size = smallIconSize();
+    iconSize_ = size;
+    if (! iconSet_)
+    {
+        // JUCE creates the notification icon from its first image.
+        const auto image = logoImage (paused_, size);
+        setIconImage (image, image);
+        // Required tooltip text (fixed).
+        setIconTooltip (utf8 (brand::trayTooltipUtf8));
+        iconSet_ = true;
+    }
+
+    // The shown icon is built by Windows straight from the PNG frame made for
+    // this size: straight alpha, no resampling and no premultiplied-alpha
+    // round trip through a JUCE bitmap (which darkens the anti-aliased edges
+    // of the transparent logo).
+    const auto& f = frameFor (size);
+    const auto* png = reinterpret_cast<const BYTE*> (paused_ ? f.paused : f.normal);
+    const auto bytes = static_cast<DWORD> (paused_ ? f.pausedSize : f.normalSize);
+    auto icon = ::CreateIconFromResourceEx (const_cast<PBYTE> (png), bytes, TRUE, 0x00030000, size, size, LR_DEFAULTCOLOR);
+    auto* data = static_cast<NOTIFYICONDATAW*> (getNativeHandle());
+    if (icon == nullptr || data == nullptr)
+    {
+        if (icon != nullptr)
+            ::DestroyIcon (icon);
+        const auto image = logoImage (paused_, size);
+        setIconImage (image, image); // fallback: JUCE's conversion
+        return;
+    }
+    // JUCE keeps owning the handle (it re-adds the icon with it when Explorer
+    // restarts and destroys it with the icon).
+    const auto previous = data->hIcon;
+    data->hIcon = icon;
+    data->uFlags = NIF_ICON;
+    ::Shell_NotifyIconW (NIM_MODIFY, data);
+    ::DestroyIcon (previous);
 }
+
 } // namespace audioslave

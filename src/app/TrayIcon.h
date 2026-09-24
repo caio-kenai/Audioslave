@@ -33,7 +33,8 @@ public:
 
     // Size in pixels the shell uses for notification icons on this system.
     static int smallIconSize();
-    // The logo (normal or grey) closest to `size`, from the original .ico frames.
+    // The logo frame (normal or grey) made for `size` (the next larger one
+    // for sizes without a dedicated frame).
     static juce::Image logoImage (bool paused, int size);
 
 private:
@@ -46,6 +47,7 @@ private:
 
     bool paused_ = false;
     bool iconSet_ = false;
+    int iconSize_ = 0;
     void* subclassedWindow_ = nullptr;
 };
 } // namespace audioslave
