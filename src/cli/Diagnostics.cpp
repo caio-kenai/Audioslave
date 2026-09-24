@@ -49,6 +49,8 @@ std::vector<AudioEndpoint> inventory (bool printTable)
                    + endpointStateName (e.state));
         printLine ("       " + e.name);
         printLine ("       id             = " + e.id);
+        if (e.description.isNotEmpty())
+            printLine ("       name (editable)= " + e.description);
         if (e.exclusive.known)
             printLine ("       exclusive mode = " + juce::String (e.exclusive.allowed ? "ALLOWED " : "blocked ") + "(priority "
                        + (e.exclusive.priority ? "on" : "off") + ")" + (e.exclusive.allowed ? "  <-- NOT COMPLIANT" : ""));
@@ -65,6 +67,9 @@ std::vector<AudioEndpoint> inventory (bool printTable)
         }
         printLine ("       default format = " + describeFormat (current) + (current.isFloat ? " float" : "") + ", "
                    + juce::String (current.channels) + " ch");
+        const auto caps = format.probe (e.id, current);
+        printLine ("       sample rates   = " + caps.describeRates());
+        printLine ("       bit depths     = " + caps.describeDepths());
         printLine ("       supported      = " + format.describeSupported (e.id, current));
     }
     return endpoints;

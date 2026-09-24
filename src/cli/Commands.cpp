@@ -104,6 +104,12 @@ void printSnapshot (const ipc::StatusSnapshot& s)
                                                                  : juce::String ("standardization DISABLED")));
     printLine ("Enforce          : " + juce::String (s.enforce ? "on" : "report only") + " | check every "
                + juce::String (s.checkIntervalSeconds) + " s");
+    if (s.formatStandardization)
+        printLine ("Incompatible     : " + juce::String (! s.disableIncompatibleDevices ? "ignored (reported only)"
+                                                         : s.disablePolicyConfirmed ? "DISABLED (policy confirmed)"
+                                                                                    : "would be disabled - waiting for confirmation in the tray"));
+    for (const auto& d : s.pendingDisable)
+        printLine ("  pending        : " + d.name + " (" + d.reason + ")");
     if (s.hasScanned)
     {
         const auto& r = s.lastScan;
@@ -117,8 +123,11 @@ void printSnapshot (const ipc::StatusSnapshot& s)
     printLine ("Endpoints        : " + juce::String (static_cast<int> (s.endpoints.size())) + " monitored");
     for (const auto& e : s.endpoints)
         printLine ("  - [" + endpointFlowName (e.flow) + (e.isDefault ? ", default" : "") + "] " + e.name + " | "
-                   + endpointStateName (e.state) + " | exclusive " + e.exclusive
-                   + (e.format.isNotEmpty() ? " | " + e.format : juce::String()));
+                   + (e.disabledByAudioslave ? juce::String ("disabled by Audioslave") : endpointStateName (e.state))
+                   + (e.disabledByAudioslave ? juce::String() : " | exclusive " + e.exclusive)
+                   + (e.format.isNotEmpty() ? " | " + e.format : juce::String())
+                   + (e.compatibility != Compatibility::unknown ? " | " + compatibilityName (e.compatibility) : juce::String())
+                   + (e.customName ? " | name kept" : ""));
     printLine ("Logs             : " + s.logsDir);
 }
 
