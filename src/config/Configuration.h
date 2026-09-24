@@ -14,7 +14,11 @@
 
 namespace audioslave
 {
-inline constexpr std::array<std::uint32_t, 6> supportedSampleRates { 44100, 48000, 88200, 96000, 176400, 192000 };
+// Every rate the Windows Sound panel / WASAPI offers for PCM endpoints. These
+// are the choices the user can make; what each device really supports is
+// asked from its driver (FormatPolicy::probe) and never assumed.
+inline constexpr std::array<std::uint32_t, 15> supportedSampleRates { 8000,  11025, 12000,  16000,  22050,  24000,  32000, 44100,
+                                                                      48000, 88200, 96000, 176400, 192000, 352800, 384000 };
 inline constexpr std::array<std::uint16_t, 3> supportedBitDepths { 16, 24, 32 };
 inline constexpr std::uint32_t defaultSampleRate = 48000;
 inline constexpr std::uint16_t defaultBitDepth = 24;

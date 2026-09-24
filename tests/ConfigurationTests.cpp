@@ -100,9 +100,24 @@ public:
                 }
         }
 
+        beginTest ("The full sample-rate range from 8000 to 384000 Hz is offered");
+        {
+            const std::uint32_t expected[] = { 8000,  11025, 12000,  16000,  22050,  24000,  32000, 44100,
+                                               48000, 88200, 96000, 176400, 192000, 352800, 384000 };
+            expectEquals (static_cast<int> (supportedSampleRates.size()), static_cast<int> (std::size (expected)));
+            for (auto rate : expected)
+                expect (isSupportedSampleRate (rate), juce::String (rate));
+            for (std::uint64_t rate : { 0ull, 7999ull, 44000ull, 384001ull, 768000ull })
+                expect (! isSupportedSampleRate (rate), juce::String (rate));
+            for (std::uint64_t bits : { 16ull, 24ull, 32ull })
+                expect (isSupportedBitDepth (bits));
+            for (std::uint64_t bits : { 0ull, 8ull, 20ull, 64ull })
+                expect (! isSupportedBitDepth (bits));
+        }
+
         beginTest ("Unsupported sample rate / bit depth keep the default with a warning");
         {
-            auto r = parse ("[Features]\nFormatStandardization=true\nSampleRate=22050\nBitDepth=32\n");
+            auto r = parse ("[Features]\nFormatStandardization=true\nSampleRate=22051\nBitDepth=32\n");
             expect (r.config.formatStandardization);
             expectEquals (static_cast<int> (r.config.sampleRate), 48000);
             expectEquals (static_cast<int> (r.config.bitDepth), 32);
