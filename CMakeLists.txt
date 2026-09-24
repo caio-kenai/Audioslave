@@ -319,3 +319,18 @@ target_link_libraries(audioslave_screenshots PRIVATE AudioslaveAssets)
 audioslave_configure_executable(audioslave_screenshots)
 
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Audioslave)
+
+# ---------------------------------------------------------------------------
+# dist: Audioslave-Setup.exe, Audioslave-Portable.zip and SHA256SUMS.txt
+# ---------------------------------------------------------------------------
+add_custom_target(dist
+    COMMAND "${CMAKE_COMMAND}"
+            -DBIN_DIR=${AUDIOSLAVE_BIN_DIR}
+            -DDIST_DIR=${CMAKE_CURRENT_SOURCE_DIR}/dist
+            -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DVERSION=${PROJECT_VERSION}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MakeDist.cmake"
+    DEPENDS Audioslave AudioslaveSetup
+    COMMENT "Creating the release artefacts in dist/"
+    VERBATIM)
+set_target_properties(dist PROPERTIES FOLDER "Audioslave")
