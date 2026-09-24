@@ -1,8 +1,10 @@
 #include "platform/windows/WinCommon.h"
 #include "app/AudioslaveApplication.h"
 #include "AudioslaveVersion.h"
+#include "app/Dialog.h"
 #include "app/StatusWindow.h"
 #include "app/TrayIcon.h"
+#include "app/TrayMenu.h"
 #include "common/Branding.h"
 #include "common/Strings.h"
 #include "config/Configuration.h"
@@ -52,15 +54,11 @@ private:
 
 namespace
 {
-enum MenuItem
+void showAlert (juce::MessageBoxIconType icon, const juce::String& message, std::function<void (int)> callback = {})
 {
-    menuTitle = 1,
-    menuPause,
-    menuResume,
-    menuScan,
-    menuOpen,
-    menuExit
-};
+    theme::showMessage (icon, brand::productName, message, [callback = std::move (callback)] { if (callback) callback (0); });
+}
+
 } // namespace
 
 AudioslaveApplication::AudioslaveApplication() = default;
@@ -257,23 +255,9 @@ void AudioslaveApplication::showMenu()
 {
     if (quitting_)
         return;
-    const auto m = controller_.menu();
-
-    juce::PopupMenu menu;
-    menu.addItem (menuTitle, m.title, true, false);
-    menu.addSeparator();
-    menu.addItem (juce::PopupMenu::Item (m.statusLine).setEnabled (false));
-    menu.addSeparator();
-    menu.addItem (menuPause, "Pausar monitoramento", m.pauseEnabled);
-    menu.addItem (menuResume, "Retomar monitoramento", m.resumeEnabled);
-    menu.addItem (menuScan, "Verificar agora", m.scanEnabled);
-    menu.addSeparator();
-    menu.addItem (menuOpen, "Abrir");
-    menu.addSeparator();
-    menu.addItem (menuExit, "Encerrar", m.exitEnabled);
-
+    auto menu = buildTrayMenu (controller_);
     auto alive = alive_;
-    menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition(), [this, alive] (int choice)
+    menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition().withMinimumWidth (280), [this, alive] (int choice)
     {
         if (! alive->load())
             return;
@@ -416,14 +400,14 @@ void AudioslaveApplication::confirmExit()
                                   "A proteção volta automaticamente na próxima inicialização do Windows ou quando "
                                   "você abrir o Audioslave novamente.")
                           : utf8 ("Encerrar o Audioslave?\n\nO monitoramento dos dispositivos de áudio será interrompido.");
-    auto options = juce::MessageBoxOptions()
-                       .withIconType (juce::MessageBoxIconType::QuestionIcon)
-                       .withTitle (brand::productName)
-                       .withMessage (text)
-                       .withButton ("Encerrar")
-                       .withButton ("Cancelar");
+    theme::DialogOptions options;
+    options.icon = juce::MessageBoxIconType::QuestionIcon;
+    options.title = utf8 ("Encerrar o Audioslave?");
+    options.message = text.fromFirstOccurrenceOf ("\n\n", false, false);
+    options.buttons = { "Encerrar", "Cancelar" };
+    options.destructive = true;
     auto alive = alive_;
-    juce::NativeMessageBox::showAsync (options, [this, alive] (int button)
+    theme::showDialog (std::move (options), [this, alive] (int button, juce::Component*)
     {
         if (alive->load() && button == 0)
             exitAndStop();
@@ -478,13 +462,10 @@ void AudioslaveApplication::exitAndStop()
                          {
                              Logger::instance().error ("Tray: stop failed: " + error);
                              auto alive = alive_;
-                             auto options = juce::MessageBoxOptions()
-                                                .withIconType (juce::MessageBoxIconType::WarningIcon)
-                                                .withTitle (brand::productName)
-                                                .withMessage (utf8 ("Não foi possível parar o serviço Audioslave:\n") + error
-                                                              + utf8 ("\n\nO ícone será fechado, mas a proteção continua ativa em segundo plano."))
-                                                .withButton ("OK");
-                             juce::NativeMessageBox::showAsync (options, [this, alive] (int) { if (alive->load()) quit(); });
+                             showAlert (juce::MessageBoxIconType::WarningIcon,
+                                        utf8 ("Não foi possível parar o serviço Audioslave:\n") + error
+                                            + utf8 ("\n\nO ícone será fechado, mas a proteção continua ativa em segundo plano."),
+                                        [this, alive] (int) { if (alive->load()) quit(); });
                              return;
                          }
                          quit();
@@ -500,12 +481,7 @@ void AudioslaveApplication::openLogs()
 
 void AudioslaveApplication::showError (const juce::String& message)
 {
-    auto options = juce::MessageBoxOptions()
-                       .withIconType (juce::MessageBoxIconType::WarningIcon)
-                       .withTitle (brand::productName)
-                       .withMessage (message)
-                       .withButton ("OK");
-    juce::NativeMessageBox::showAsync (options, nullptr);
+    showAlert (juce::MessageBoxIconType::WarningIcon, message);
 }
 
 void AudioslaveApplication::runInBackground (std::function<juce::String()> job,
