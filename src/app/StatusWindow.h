@@ -2,6 +2,11 @@
 // "Abrir": the tray's status window, drawn entirely by JUCE (own title bar,
 // dark theme). Shows the live state pushed by the service, both features,
 // activity, every monitored endpoint and the same actions as the tray menu.
+//
+// A regular Windows window: minimise, maximise / restore (also by
+// double-clicking the title bar or with snap layouts) and close buttons, plus
+// resizing from the edges. Its position, size and maximised state are
+// remembered per user (ui.settings in the user's AppData folder).
 
 #include "app/TrayController.h"
 
@@ -27,9 +32,11 @@ public:
 
     void closeButtonPressed() override;
     bool keyPressed (const juce::KeyPress& key) override;
+    void resized() override;
 
 private:
     class Content;
+    void saveWindowState();
     std::function<void()> onClose_;
 };
 } // namespace audioslave

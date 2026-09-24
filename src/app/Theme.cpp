@@ -11,40 +11,71 @@ juce::String variantOf (const juce::Component& c)
     return c.getProperties().getWithDefault (variantProperty, "secondary").toString();
 }
 
-// Title-bar buttons (minimise / close) drawn as thin glyphs.
+// Title-bar buttons (minimise / maximise-restore / close) drawn as thin
+// glyphs. They are the DocumentWindow's own buttons, so they drive the real
+// window (ShowWindow minimise / maximise / restore, Windows 11 snap layouts).
 class TitleBarButton final : public juce::Button
 {
 public:
-    TitleBarButton (const juce::String& name, bool isClose) : juce::Button (name), isClose_ (isClose) {}
+    enum class Kind
+    {
+        minimise,
+        maximise,
+        close
+    };
+
+    TitleBarButton (const juce::String& name, Kind kind) : juce::Button (name), kind_ (kind) {}
 
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
+        const bool isClose = kind_ == Kind::close;
         if (highlighted || down)
         {
-            g.setColour (isClose_ ? danger.withAlpha (down ? 0.9f : 0.75f) : surfaceRaised.brighter (down ? 0.2f : 0.0f));
+            g.setColour (isClose ? danger.withAlpha (down ? 0.9f : 0.75f) : surfaceRaised.brighter (down ? 0.2f : 0.0f));
             g.fillRect (getLocalBounds());
         }
         const auto c = getLocalBounds().toFloat().getCentre();
         const float s = 5.0f;
-        g.setColour (highlighted && isClose_ ? juce::Colours::white : textDim);
+        g.setColour (highlighted && isClose ? juce::Colours::white : textDim);
         juce::Path p;
-        if (isClose_)
+        switch (kind_)
         {
-            p.startNewSubPath (c.x - s, c.y - s);
-            p.lineTo (c.x + s, c.y + s);
-            p.startNewSubPath (c.x + s, c.y - s);
-            p.lineTo (c.x - s, c.y + s);
-        }
-        else
-        {
-            p.startNewSubPath (c.x - s, c.y);
-            p.lineTo (c.x + s, c.y);
+            case Kind::close:
+                p.startNewSubPath (c.x - s, c.y - s);
+                p.lineTo (c.x + s, c.y + s);
+                p.startNewSubPath (c.x + s, c.y - s);
+                p.lineTo (c.x - s, c.y + s);
+                break;
+            case Kind::minimise:
+                p.startNewSubPath (c.x - s, c.y);
+                p.lineTo (c.x + s, c.y);
+                break;
+            case Kind::maximise:
+                if (isMaximised())
+                {
+                    // Restore: two overlapping frames.
+                    p.addRoundedRectangle (c.x - s, c.y - s + 2.0f, 2.0f * s - 2.0f, 2.0f * s - 2.0f, 1.2f);
+                    p.startNewSubPath (c.x - s + 2.0f, c.y - s);
+                    p.lineTo (c.x + s, c.y - s);
+                    p.lineTo (c.x + s, c.y + s - 2.0f);
+                }
+                else
+                {
+                    p.addRoundedRectangle (c.x - s, c.y - s, 2.0f * s, 2.0f * s, 1.2f);
+                }
+                break;
         }
         g.strokePath (p, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
 private:
-    bool isClose_;
+    bool isMaximised() const
+    {
+        const auto* window = findParentComponentOfClass<juce::DocumentWindow>();
+        return window != nullptr && window->isFullScreen();
+    }
+
+    Kind kind_;
 };
 
 void iconForMessageType (juce::Graphics& g, juce::Rectangle<float> area, juce::MessageBoxIconType type)
@@ -500,9 +531,11 @@ void LookAndFeel::drawDocumentWindowTitleBar (juce::DocumentWindow& window, juce
 juce::Button* LookAndFeel::createDocumentWindowButton (int buttonType)
 {
     if (buttonType == juce::DocumentWindow::closeButton)
-        return new TitleBarButton ("close", true);
+        return new TitleBarButton ("Fechar", TitleBarButton::Kind::close);
     if (buttonType == juce::DocumentWindow::minimiseButton)
-        return new TitleBarButton ("minimise", false);
+        return new TitleBarButton ("Minimizar", TitleBarButton::Kind::minimise);
+    if (buttonType == juce::DocumentWindow::maximiseButton)
+        return new TitleBarButton ("Maximizar", TitleBarButton::Kind::maximise);
     return juce::LookAndFeel_V4::createDocumentWindowButton (buttonType);
 }
 

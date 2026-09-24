@@ -9,6 +9,21 @@ namespace audioslave
 {
 namespace
 {
+const char* const windowStateKey = "statusWindow";
+
+// Per-user UI preferences (the configuration in ProgramData is machine-wide
+// and read-only for users).
+std::unique_ptr<juce::PropertiesFile> openUiSettings()
+{
+    juce::PropertiesFile::Options o;
+    o.applicationName = "ui";
+    o.filenameSuffix = ".settings";
+    o.folderName = "Audioslave";
+    o.storageFormat = juce::PropertiesFile::storeAsXML;
+    o.millisecondsBeforeSaving = -1;
+    return std::make_unique<juce::PropertiesFile> (o);
+}
+
 juce::String flowText (EndpointFlow flow)
 {
     return flow == EndpointFlow::capture ? utf8 ("Captura") : utf8 ("Reprodução");
@@ -291,7 +306,7 @@ private:
 };
 
 StatusWindow::StatusWindow (Actions actions, std::function<void()> onClose)
-    : juce::DocumentWindow ("Audioslave", theme::background, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
+    : juce::DocumentWindow ("Audioslave", theme::background, juce::DocumentWindow::allButtons),
       onClose_ (std::move (onClose))
 {
     setUsingNativeTitleBar (false);
@@ -300,14 +315,36 @@ StatusWindow::StatusWindow (Actions actions, std::function<void()> onClose)
     setDropShadowEnabled (true);
     setContentOwned (new Content (std::move (actions)), true);
     setResizable (true, true);
-    setResizeLimits (760, 560, 1800, 1300);
+    setResizeLimits (760, 560, 10000, 10000);
     setIcon (TrayIcon::logoImage (false, 64));
     centreWithSize (getWidth(), getHeight());
+
+    // Last position, size and maximised state (kept on a visible display by
+    // JUCE).
+    const auto saved = openUiSettings()->getValue (windowStateKey);
+    if (saved.isNotEmpty())
+        restoreWindowStateFromString (saved);
 }
 
 StatusWindow::~StatusWindow()
 {
+    saveWindowState();
     clearContentComponent();
+}
+
+void StatusWindow::saveWindowState()
+{
+    auto settings = openUiSettings();
+    settings->setValue (windowStateKey, getWindowStateAsString());
+    settings->saveIfNeeded();
+}
+
+void StatusWindow::resized()
+{
+    juce::DocumentWindow::resized();
+    // The maximise button shows "restore" while the window is maximised.
+    if (auto* maximise = getMaximiseButton())
+        maximise->repaint();
 }
 
 void StatusWindow::update (const TrayController& controller)
