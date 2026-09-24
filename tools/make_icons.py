@@ -3,69 +3,49 @@
     python tools/make_icons.py [assets/logo-master.png]
 
 Outputs
-    assets/logo-master.png         (input) the logo as delivered, RGB
-    assets/logo-source.png         master, outside of the rounded square made transparent
+    assets/logo-master.png         (input) the official logo as delivered, RGBA
+    assets/logo-source.png         master cropped to the artwork, square
     assets/logo.png, logo-256.png  README / documentation
     assets/tray/normal-N.png       tray + UI frames (N = 16 ... 64, 128, 256)
     assets/tray/paused-N.png       grey variant shown while monitoring is paused
-    resources/logo.ico             executable / window icon (all frames)
+    resources/logo.ico             executable / window / installer icon
     resources/logo-paused.ico
 
-Quality: every frame is rendered directly from the master (never from a
-smaller frame) in linear light with premultiplied alpha and a Lanczos filter.
-Frames of 48 px and less are composed at their own size ("hinted"): a
-pixel-aligned orange ring, a tighter margin and the emblem as large as the
-frame allows, so the eagle stays legible where the full artwork would turn
-into a blur. The tray picks the frame that
-exactly matches the shell's icon size for the current DPI (16 px at 100 %,
-20 px at 125 %, 24 px at 150 %, 28 px at 175 %, 32 px at 200 % ...), so
-Windows never has to scale it.
+The artwork is used exactly as delivered: it is only cropped to its visible
+bounds (plus a small, even margin) and scaled. Every frame is rendered
+directly from the full-resolution master - never from a smaller frame - in
+linear light with premultiplied alpha and a Lanczos filter; frames of 48 px
+and less get a light unsharp mask to recover the edge contrast the filter
+softens. The tray picks the frame that exactly matches the shell's icon size
+for the current DPI (16 px at 100 %, 20 px at 125 %, 24 px at 150 %, 28 px at
+175 %, 32 px at 200 % ...), so Windows never has to scale it, and the .ico
+carries every size Explorer, the taskbar, shortcuts and Apps & Features ask
+for.
 """
 
 import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 TRAY_SIZES = [16, 20, 24, 28, 32, 36, 40, 48, 56, 64, 128, 256]
 ICO_SIZES = [16, 20, 24, 28, 32, 36, 40, 48, 56, 64, 96, 128, 256]
+MARGIN = 0.02  # of the square side, on every edge
 
 
-def master_with_alpha(path: Path) -> Image.Image:
-    """Makes everything outside the logo's rounded square transparent."""
-    rgb = Image.open(path).convert("RGB")
-    w, h = rgb.size
-    marker = (0, 255, 0)
-    probe = rgb.copy()
-    for corner in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]:
-        if probe.getpixel(corner) != marker:
-            ImageDraw.floodfill(probe, corner, marker, thresh=40)
-    outside = np.all(np.asarray(probe) == marker, axis=-1)
-
-    pixels = np.asarray(rgb).astype(np.float32)
-    alpha = np.where(outside, 0.0, 255.0)
-
-    # Anti-aliased edge: pixels next to the outside region are a blend of the
-    # border colour and black; turn that blend into coverage instead of a dark
-    # fringe.
-    near = outside.copy()
-    for _ in range(3):
-        grown = near.copy()
-        grown[1:, :] |= near[:-1, :]
-        grown[:-1, :] |= near[1:, :]
-        grown[:, 1:] |= near[:, :-1]
-        grown[:, :-1] |= near[:, 1:]
-        near = grown
-    edge = near & ~outside
-    border = np.array([254.0, 105.0, 2.0], dtype=np.float32)
-    coverage = np.clip(pixels[..., 0] / border[0], 0.0, 1.0)
-    alpha = np.where(edge, coverage * 255.0, alpha)
-    pixels = np.where(edge[..., None], border, pixels)
-
-    rgba = np.dstack([pixels, alpha]).clip(0, 255).astype(np.uint8)
-    return Image.fromarray(rgba, "RGBA")
+def square_master(path: Path) -> Image.Image:
+    """The logo cropped to its visible pixels and centred on a square canvas."""
+    rgba = Image.open(path).convert("RGBA")
+    alpha = np.asarray(rgba.getchannel("A"))
+    ys, xs = np.nonzero(alpha > 8)
+    box = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
+    art = rgba.crop(box)
+    side = int(round(max(art.size) * (1.0 + 2.0 * MARGIN)))
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    canvas.paste(art, ((side - art.size[0]) // 2, (side - art.size[1]) // 2))
+    return canvas
 
 
 def to_linear(c: np.ndarray) -> np.ndarray:
@@ -94,90 +74,11 @@ def resize(master: Image.Image, size: int) -> Image.Image:
     image = Image.fromarray(np.round(rgba).clip(0, 255).astype(np.uint8), "RGBA")
     if size <= 48:
         # Recover the detail the filter softens at tray sizes.
-        amount = 90 if size <= 24 else 60
+        amount = 80 if size <= 24 else 50
         sharpened = image.filter(ImageFilter.UnsharpMask(radius=0.6, percent=amount, threshold=1))
         sharpened.putalpha(image.getchannel("A"))
         image = sharpened
     return image
-
-
-ORANGE = (254, 105, 2)
-
-
-def emblem_mask(source: Path) -> Image.Image:
-    """Orange emblem (eagle + wordmark + badge) as a coverage mask, without
-    the rounded-square ring, cropped to its bounding box."""
-    rgb = Image.open(source).convert("RGB")
-    data = np.asarray(rgb).astype(np.float32)
-    h, w, _ = data.shape
-    coverage = np.clip(data[..., 0] / ORANGE[0], 0.0, 1.0)
-
-    # The ring is the orange component that touches the top-centre border.
-    # .copy(): fromarray may wrap the numpy buffer read-only, and floodfill
-    # would then silently change nothing.
-    solid = Image.fromarray(((coverage > 0.35) * 255).astype(np.uint8), "L").copy()
-    ys = np.nonzero(np.asarray(solid)[:, w // 2] > 0)[0]
-    ImageDraw.floodfill(solid, (w // 2, int(ys[0])), 128)
-    ring = np.asarray(solid) == 128
-    if not ring.any():
-        raise RuntimeError("could not isolate the logo's ring")
-    for _ in range(3):  # include its anti-aliased edge
-        grown = ring.copy()
-        grown[1:, :] |= ring[:-1, :]
-        grown[:-1, :] |= ring[1:, :]
-        grown[:, 1:] |= ring[:, :-1]
-        grown[:, :-1] |= ring[:, 1:]
-        ring = grown
-
-    inner = np.where(ring, 0.0, coverage)
-    ys, xs = np.nonzero(inner > 0.05)
-    box = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
-    mask = Image.fromarray((inner * 255).astype(np.uint8), "L").crop(box)
-    side = max(mask.size)
-    square = Image.new("L", (side, side), 0)
-    square.paste(mask, ((side - mask.size[0]) // 2, (side - mask.size[1]) // 2))
-    return square
-
-
-def hinted(emblem: Image.Image, size: int, colour) -> Image.Image:
-    """Small-size frame: black rounded square, crisp ring, large emblem."""
-    ss = 8  # supersampling for the shapes
-    big = size * ss
-    ring = (1 if size <= 24 else 2) * ss
-    radius = int(round(size * 0.22)) * ss
-    shape = Image.new("L", (big, big), 0)
-    draw = ImageDraw.Draw(shape)
-    draw.rounded_rectangle((0, 0, big - 1, big - 1), radius=radius, fill=255)
-    hole = Image.new("L", (big, big), 0)
-    ImageDraw.Draw(hole).rounded_rectangle((ring, ring, big - 1 - ring, big - 1 - ring),
-                                            radius=max(radius - ring, 0), fill=255)
-    shape_small = shape.resize((size, size), Image.Resampling.BOX)
-    hole_small = hole.resize((size, size), Image.Resampling.BOX)
-
-    inset = max(2, round(size * 0.12)) if size > 24 else 2
-    inner = size - 2 * inset
-    emblem_small = linear_resize_mask(emblem, inner)
-
-    a = np.asarray(shape_small).astype(np.float64) / 255.0
-    ring_cov = a - np.asarray(hole_small).astype(np.float64) / 255.0
-    emb = np.zeros((size, size))
-    emb[inset:inset + inner, inset:inset + inner] = emblem_small
-    orange_cov = np.clip(ring_cov + emb * (np.asarray(hole_small) / 255.0), 0.0, 1.0)
-
-    colour_lin = to_linear(np.array(colour, dtype=np.float64) / 255.0)
-    rgb_lin = orange_cov[..., None] * colour_lin  # on black
-    safe = np.where(a > 1e-6, a, 1.0)
-    rgb = to_srgb(np.clip(rgb_lin / safe[..., None], 0.0, 1.0))
-    out = np.dstack([rgb, a]) * 255.0
-    return Image.fromarray(np.round(out).clip(0, 255).astype(np.uint8), "RGBA")
-
-
-def linear_resize_mask(mask: Image.Image, size: int) -> np.ndarray:
-    data = np.asarray(mask).astype(np.float32) / 255.0
-    img = Image.fromarray(data, "F").resize((size, size), Image.Resampling.LANCZOS)
-    out = np.clip(np.asarray(img).astype(np.float64), 0.0, 1.0)
-    # Coverage mask: push mid-tones slightly so thin strokes keep contrast.
-    return np.clip((out - 0.5) * 1.15 + 0.5, 0.0, 1.0)
 
 
 def paused_variant(master: Image.Image) -> Image.Image:
@@ -191,7 +92,7 @@ def paused_variant(master: Image.Image) -> Image.Image:
 
 def main() -> None:
     source = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "assets" / "logo-master.png"
-    master = master_with_alpha(source)
+    master = square_master(source)
     paused = paused_variant(master)
 
     assets = ROOT / "assets"
@@ -204,16 +105,10 @@ def main() -> None:
     resize(master, 512).save(assets / "logo.png")
     resize(master, 256).save(assets / "logo-256.png")
 
-    emblem = emblem_mask(source)
-    grey = (170, 170, 170)
     normal_frames, paused_frames = {}, {}
     for size in sorted(set(TRAY_SIZES + ICO_SIZES)):
-        if size <= 48:
-            normal_frames[size] = hinted(emblem, size, ORANGE)
-            paused_frames[size] = hinted(emblem, size, grey)
-        else:
-            normal_frames[size] = resize(master, size)
-            paused_frames[size] = resize(paused, size)
+        normal_frames[size] = resize(master, size)
+        paused_frames[size] = resize(paused, size)
         if size in TRAY_SIZES:
             normal_frames[size].save(tray / f"normal-{size}.png")
             paused_frames[size].save(tray / f"paused-{size}.png")
