@@ -191,12 +191,10 @@ juce_add_binary_data(AudioslaveAssets
     NAMESPACE AudioslaveAssets
     HEADER_NAME AudioslaveAssets.h
     SOURCES
-        assets/tray/normal-16.png assets/tray/normal-20.png assets/tray/normal-24.png
-        assets/tray/normal-32.png assets/tray/normal-40.png assets/tray/normal-48.png
-        assets/tray/normal-64.png assets/tray/normal-256.png
-        assets/tray/paused-16.png assets/tray/paused-20.png assets/tray/paused-24.png
-        assets/tray/paused-32.png assets/tray/paused-40.png assets/tray/paused-48.png
-        assets/tray/paused-64.png assets/tray/paused-256.png)
+        assets/tray/normal-16.png assets/tray/normal-20.png assets/tray/normal-24.png assets/tray/normal-28.png assets/tray/normal-32.png assets/tray/normal-36.png
+        assets/tray/normal-40.png assets/tray/normal-48.png assets/tray/normal-56.png assets/tray/normal-64.png assets/tray/normal-128.png assets/tray/normal-256.png
+        assets/tray/paused-16.png assets/tray/paused-20.png assets/tray/paused-24.png assets/tray/paused-28.png assets/tray/paused-32.png assets/tray/paused-36.png
+        assets/tray/paused-40.png assets/tray/paused-48.png assets/tray/paused-56.png assets/tray/paused-64.png assets/tray/paused-128.png assets/tray/paused-256.png)
 set_target_properties(AudioslaveAssets PROPERTIES FOLDER "Audioslave")
 
 juce_add_gui_app(Audioslave
