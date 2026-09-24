@@ -98,7 +98,7 @@ if(MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
-# audioslave_core: everything except the three entry points.
+# audioslave_core: everything except the entry points and the UI.
 # ---------------------------------------------------------------------------
 add_library(audioslave_core STATIC
     src/common/Branding.h
@@ -116,8 +116,6 @@ add_library(audioslave_core STATIC
     src/platform/windows/Elevation.cpp
     src/platform/windows/SessionInstance.h
     src/platform/windows/SessionInstance.cpp
-    src/platform/windows/ChildProcess.h
-    src/platform/windows/ChildProcess.cpp
     src/logging/Logger.h
     src/logging/Logger.cpp
     src/config/Configuration.h
@@ -186,21 +184,44 @@ endfunction()
 set(AUDIOSLAVE_COMPANY "caio-kenai")
 
 # ---------------------------------------------------------------------------
-# AudioslaveService.exe: Windows service host, portable host and CLI.
+# Audioslave.exe: the single executable - system-tray application (no
+# arguments), Windows service (--service) and command-line tools.
 # ---------------------------------------------------------------------------
-juce_add_console_app(AudioslaveService
-    PRODUCT_NAME "AudioslaveService"
+juce_add_binary_data(AudioslaveAssets
+    NAMESPACE AudioslaveAssets
+    HEADER_NAME AudioslaveAssets.h
+    SOURCES
+        assets/tray/normal-16.png assets/tray/normal-20.png assets/tray/normal-24.png
+        assets/tray/normal-32.png assets/tray/normal-40.png assets/tray/normal-48.png
+        assets/tray/normal-64.png assets/tray/normal-256.png
+        assets/tray/paused-16.png assets/tray/paused-20.png assets/tray/paused-24.png
+        assets/tray/paused-32.png assets/tray/paused-40.png assets/tray/paused-48.png
+        assets/tray/paused-64.png assets/tray/paused-256.png)
+set_target_properties(AudioslaveAssets PROPERTIES FOLDER "Audioslave")
+
+juce_add_gui_app(Audioslave
+    PRODUCT_NAME "Audioslave"
     VERSION "${PROJECT_VERSION}"
     COMPANY_NAME "${AUDIOSLAVE_COMPANY}")
-target_sources(AudioslaveService PRIVATE
+target_sources(Audioslave PRIVATE
+    src/app/AudioslaveApplication.h
+    src/app/AudioslaveApplication.cpp
+    src/app/TrayController.h
+    src/app/TrayController.cpp
+    src/app/TrayIcon.h
+    src/app/TrayIcon.cpp
+    src/app/StatusWindow.h
+    src/app/StatusWindow.cpp
+    src/app/Theme.h
+    src/app/Main.cpp
     src/cli/Commands.h
     src/cli/Commands.cpp
     src/cli/Diagnostics.h
     src/cli/Diagnostics.cpp
-    src/service/ServiceMain.cpp
-    resources/AudioslaveService.manifest)
-target_compile_definitions(AudioslaveService PRIVATE JUCE_USER_DEFINED_RC_FILE="AudioslaveService.rc")
-audioslave_configure_executable(AudioslaveService)
+    resources/Audioslave.manifest)
+target_compile_definitions(Audioslave PRIVATE JUCE_USER_DEFINED_RC_FILE="Audioslave.rc")
+target_link_libraries(Audioslave PRIVATE AudioslaveAssets)
+audioslave_configure_executable(Audioslave)
 
 # ---------------------------------------------------------------------------
 # Tests (juce::UnitTest)
@@ -222,10 +243,13 @@ target_sources(audioslave_tests PRIVATE
     tests/ProtocolTests.cpp
     tests/IpcTests.cpp
     tests/ServiceHostTests.cpp
-    tests/WindowsIntegrationTests.cpp)
+    tests/TrayControllerTests.cpp
+    tests/WindowsIntegrationTests.cpp
+    src/app/TrayController.h
+    src/app/TrayController.cpp)
 target_compile_definitions(audioslave_tests PRIVATE JUCE_USER_DEFINED_RC_FILE="AudioslaveTests.rc")
 target_include_directories(audioslave_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 audioslave_configure_executable(audioslave_tests)
 add_test(NAME audioslave_tests COMMAND audioslave_tests)
 
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT AudioslaveService)
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Audioslave)

@@ -140,10 +140,9 @@ ipc::Reply sendToHost (ipc::Command command)
 int commandInstall (const juce::ArgumentList& args)
 {
     requireAdmin ("install", args);
-    const auto service = paths::siblingExecutable (brand::serviceExecutable);
     juce::String error;
     juce::StringArray warnings;
-    if (! scm::install (win::quoteArgument (service.getFullPathName()) + " --service", error, warnings))
+    if (! scm::install (win::quoteArgument (paths::executableFile().getFullPathName()) + " --service", error, warnings))
         ConsoleApplication::fail ("Install failed: " + error, 1);
     for (const auto& w : warnings)
         printLine ("warning: " + w);
@@ -157,7 +156,7 @@ int commandInstall (const juce::ArgumentList& args)
     if (! win::applyLogsDirAcl (paths::logsDir(), &error))
         printLine ("warning: logs folder permissions: " + error);
 
-    printLine ("Installed (or updated). Use: AudioslaveService start");
+    printLine ("Installed (or updated). Use: Audioslave start");
     return 0;
 }
 
@@ -284,7 +283,8 @@ juce::String usage()
 {
     return juce::String ("Audioslave ") + AUDIOSLAVE_VERSION_STRING
            + " - keeps Windows audio devices out of exclusive mode\n\n"
-             "Usage: AudioslaveService <command> [options]\n";
+             "Usage: Audioslave <command> [options]\n"
+             "(no arguments: start the system-tray application)\n";
 }
 
 void addCommand (ConsoleApplication& app, const char* option, const char* argsText, const char* description,
@@ -348,13 +348,6 @@ int run (const juce::ArgumentList& args)
                 [] (const juce::ArgumentList&) { return runValidate(); });
     addCommand (app, "run|--foreground", "", "Run the watchdog in this console (Ctrl+C to stop)",
                 [] (const juce::ArgumentList&) { return runHost (ServiceHost::Mode::console); });
-    addCommand (app, "--portable", "", "Internal: monitoring host started by the tray when no service is installed",
-                [] (const juce::ArgumentList&)
-                {
-                    if (scm::exists())
-                        ConsoleApplication::fail ("The Audioslave service is installed; the portable host is not needed.", 1);
-                    return runHost (ServiceHost::Mode::portable);
-                });
     addCommand (app, "--service", "", "Internal: entry point used by the Service Control Manager",
                 [] (const juce::ArgumentList&)
                 {
@@ -362,7 +355,7 @@ int run (const juce::ArgumentList& args)
                     {
                         if (::GetLastError() == ERROR_FAILED_SERVICE_CONTROLLER_CONNECT)
                             ConsoleApplication::fail ("Not started by the Service Control Manager: install the service, "
-                                                      "or use 'AudioslaveService run' in a console.", 1);
+                                                      "or use 'Audioslave run' in a console.", 1);
                         ConsoleApplication::fail ("StartServiceCtrlDispatcher failed: " + win::lastErrorText(), 1);
                     }
                     return 0;

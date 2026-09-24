@@ -1,5 +1,5 @@
 #pragma once
-// Command-line interface of AudioslaveService.exe (juce::ConsoleApplication).
+// Command-line interface of Audioslave.exe (juce::ConsoleApplication).
 
 #include <juce_core/juce_core.h>
 

@@ -1,8 +1,8 @@
 #pragma once
 // ServiceHost: runs the watchdog. The same object backs
 //   - the Windows service (WindowsService, under the SCM),
-//   - the portable host (AudioslaveService --portable, started by the tray),
-//   - the console mode (AudioslaveService run).
+//   - the portable host (a thread of the tray when no service is installed),
+//   - the console mode (Audioslave run).
 //
 // It owns the engine, the device watcher and the control pipe, and applies
 // every control request - from the SCM, the pipe or Ctrl+C - through one

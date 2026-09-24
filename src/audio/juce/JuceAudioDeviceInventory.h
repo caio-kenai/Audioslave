@@ -1,7 +1,7 @@
 #pragma once
 // The audio devices exactly as a JUCE application sees them (WASAPI shared
 // mode): the names a JUCE player - such as the ones Playlist builds - uses to
-// pick its output. Shown by `AudioslaveService devices`.
+// pick its output. Shown by `Audioslave devices`.
 //
 // Needs a JUCE message manager on the calling thread
 // (juce::ScopedJuceInitialiser_GUI) and COM initialised.

@@ -1,7 +1,7 @@
 #pragma once
 // Well-known locations of an Audioslave installation.
 //
-//   <install dir>\Audioslave.exe, AudioslaveService.exe, Uninstall.exe
+//   <install dir>\Audioslave.exe (tray, service, CLI), Uninstall.exe
 //   <install dir>\logs\audioslave.log | tray.log | setup.log
 //   C:\ProgramData\Audioslave\config.ini
 

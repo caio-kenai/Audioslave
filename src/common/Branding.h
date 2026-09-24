@@ -17,9 +17,9 @@ inline constexpr const wchar_t* serviceDescription =
 // Application event log source.
 inline constexpr const wchar_t* eventSource = L"Audioslave";
 
-// Executables (installed side by side).
-inline constexpr const char* trayExecutable = "Audioslave.exe";
-inline constexpr const char* serviceExecutable = "AudioslaveService.exe";
+// Executables: Audioslave.exe is the tray, the service (--service) and the
+// CLI; Uninstall.exe is a copy of the setup program.
+inline constexpr const char* executableName = "Audioslave.exe";
 inline constexpr const char* uninstallerExecutable = "Uninstall.exe";
 
 // Control channel between the tray / CLI and the service (\\.\pipe\<name>).
