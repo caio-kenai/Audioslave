@@ -210,9 +210,14 @@ target_sources(Audioslave PRIVATE
     src/app/TrayController.cpp
     src/app/TrayIcon.h
     src/app/TrayIcon.cpp
+    src/app/TrayMenu.h
+    src/app/TrayMenu.cpp
     src/app/StatusWindow.h
     src/app/StatusWindow.cpp
     src/app/Theme.h
+    src/app/Theme.cpp
+    src/app/Dialog.h
+    src/app/Dialog.cpp
     src/app/Main.cpp
     src/cli/Commands.h
     src/cli/Commands.cpp
@@ -251,5 +256,68 @@ target_compile_definitions(audioslave_tests PRIVATE JUCE_USER_DEFINED_RC_FILE="A
 target_include_directories(audioslave_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 audioslave_configure_executable(audioslave_tests)
 add_test(NAME audioslave_tests COMMAND audioslave_tests)
+
+# ---------------------------------------------------------------------------
+# Audioslave-Setup.exe: JUCE installer with Audioslave.exe embedded as RCDATA
+# (IDR_PAYLOAD). Doubles as Uninstall.exe.
+# ---------------------------------------------------------------------------
+# rc.exe reads the payload through this generated include, with the absolute
+# path of the freshly built executable (never a stale copy).
+file(GENERATE OUTPUT "${AUDIOSLAVE_GENERATED_DIR}/payload.rc"
+     CONTENT "IDR_PAYLOAD RCDATA \"$<TARGET_FILE:Audioslave>\"\n")
+
+juce_add_gui_app(AudioslaveSetup
+    PRODUCT_NAME "Audioslave-Setup"
+    VERSION "${PROJECT_VERSION}"
+    COMPANY_NAME "${AUDIOSLAVE_COMPANY}")
+target_sources(AudioslaveSetup PRIVATE
+    src/installer/SetupMain.cpp
+    src/installer/SetupOptions.h
+    src/installer/SetupOptions.cpp
+    src/installer/InstallerCore.h
+    src/installer/InstallerCore.cpp
+    src/installer/SetupWizard.h
+    src/installer/SetupWizard.cpp
+    src/app/Theme.h
+    src/app/Theme.cpp
+    src/app/Dialog.h
+    src/app/Dialog.cpp
+    resources/AudioslaveSetup.manifest)
+target_compile_definitions(AudioslaveSetup PRIVATE JUCE_USER_DEFINED_RC_FILE="AudioslaveSetup.rc")
+target_link_options(AudioslaveSetup PRIVATE "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'")
+target_link_libraries(AudioslaveSetup PRIVATE AudioslaveAssets)
+audioslave_configure_executable(AudioslaveSetup)
+# The setup embeds Audioslave.exe: build it first and re-run rc.exe when it changes.
+add_dependencies(AudioslaveSetup Audioslave)
+add_dependencies(AudioslaveSetup_rc_lib Audioslave)
+get_target_property(_setup_generated AudioslaveSetup JUCE_GENERATED_SOURCES_DIRECTORY)
+set_source_files_properties("${_setup_generated}/AudioslaveSetup_resources.rc" PROPERTIES
+    OBJECT_DEPENDS "${AUDIOSLAVE_BIN_DIR}/Audioslave.exe")
+
+# ---------------------------------------------------------------------------
+# audioslave_screenshots (development only, not built by default): renders
+# the tray menu, status window, dialogs and installer with sample data to
+# PNG files (docs/screenshots) using JUCE's own renderer.
+# ---------------------------------------------------------------------------
+juce_add_gui_app(audioslave_screenshots
+    PRODUCT_NAME "audioslave_screenshots"
+    VERSION "${PROJECT_VERSION}"
+    COMPANY_NAME "${AUDIOSLAVE_COMPANY}")
+set_target_properties(audioslave_screenshots PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_sources(audioslave_screenshots PRIVATE
+    tools/Screenshots.cpp
+    src/app/Theme.cpp
+    src/app/Dialog.h
+    src/app/Dialog.cpp
+    src/app/TrayController.cpp
+    src/app/TrayIcon.cpp
+    src/app/TrayMenu.cpp
+    src/app/StatusWindow.cpp
+    src/installer/SetupOptions.cpp
+    src/installer/InstallerCore.cpp
+    src/installer/SetupWizard.cpp)
+target_compile_definitions(audioslave_screenshots PRIVATE JUCE_USER_DEFINED_RC_FILE="AudioslaveTests.rc")
+target_link_libraries(audioslave_screenshots PRIVATE AudioslaveAssets)
+audioslave_configure_executable(audioslave_screenshots)
 
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Audioslave)
