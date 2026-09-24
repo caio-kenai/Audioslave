@@ -7,7 +7,6 @@
 //   /noformat               disable format standardization
 //   /dir="C:\path"          install folder
 //   /notray                 do not start the tray application at the end
-//   /keeplegacy             do not remove Audio Watchdog
 //   /uninstall [/S] [/removedata]
 // Uninstall.exe runs the uninstaller without arguments.
 
@@ -24,7 +23,6 @@ struct Options
     bool uninstallStage2 = false;   // internal: running from %TEMP%
     bool removeData = false;
     bool launchTray = true;
-    bool removeLegacy = true;
     bool formatSet = false;          // /format or /noformat given
     bool format = false;
     std::uint32_t sampleRate = 48000;

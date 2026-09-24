@@ -18,10 +18,6 @@ juce::File siblingExecutable (const juce::String& fileName);
 juce::File programDataDir();
 juce::File configFile();
 
-// Audio Watchdog's configuration (C:\ProgramData\Audio Watchdog\config.ini),
-// imported by the installer when Audioslave has none yet.
-juce::File legacyConfigFile();
-
 juce::File logsDir();
 juce::File serviceLogFile();
 juce::File trayLogFile();

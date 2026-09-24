@@ -24,9 +24,6 @@ juce::File defaultInstallDir();
 // Existing Audioslave installation folder (empty when not installed).
 juce::String installedLocation();
 
-// Audio Watchdog (the predecessor) is installed on this machine.
-bool legacyInstalled();
-
 // Runs on a worker thread. Returns false and sets `error` on failure.
 bool install (const Options& options, const Progress& progress, juce::String& error);
 

@@ -35,13 +35,6 @@ juce::File configFile()
     return programDataDir().getChildFile ("config.ini");
 }
 
-juce::File legacyConfigFile()
-{
-    return juce::File::getSpecialLocation (juce::File::commonApplicationDataDirectory)
-        .getChildFile (juce::String (brand::legacyProductName))
-        .getChildFile ("config.ini");
-}
-
 juce::File logsDir()
 {
     return installDir().getChildFile ("logs");

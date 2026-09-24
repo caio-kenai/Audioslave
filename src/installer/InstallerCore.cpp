@@ -24,7 +24,6 @@ namespace
 {
 constexpr const wchar_t* runKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 constexpr const wchar_t* uninstallKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Audioslave";
-constexpr const wchar_t* legacyUninstallKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\AudioWatchdog";
 constexpr const wchar_t* eventLogKey = L"SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\Audioslave";
 constexpr const wchar_t* runValue = L"Audioslave";
 
@@ -209,50 +208,6 @@ void registerUninstallEntry (const juce::File& dir)
     regSetDword (key.get(), L"EstimatedSize", static_cast<DWORD> (exe.getSize() / 1024 * 2));
 }
 
-// Waits for a process started with a command line (the legacy uninstaller).
-bool runAndWait (const juce::String& commandLine, int timeoutMs)
-{
-    std::wstring mutableLine (commandLine.toWideCharPointer());
-    STARTUPINFOW startup {};
-    startup.cb = sizeof (startup);
-    PROCESS_INFORMATION info {};
-    if (! ::CreateProcessW (nullptr, mutableLine.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
-                            &startup, &info))
-        return false;
-    win::UniqueHandle process (info.hProcess), thread (info.hThread);
-    return ::WaitForSingleObject (process.get(), static_cast<DWORD> (timeoutMs)) == WAIT_OBJECT_0;
-}
-
-// Audio Watchdog enforces the same endpoints: two watchdogs with different
-// format targets would fight. Its configuration is imported first.
-void migrateLegacy (const juce::File& dir)
-{
-    const auto legacyConfig = paths::legacyConfigFile();
-    if (legacyConfig.existsAsFile() && ! paths::configFile().existsAsFile())
-    {
-        paths::ensureDirectory (paths::programDataDir());
-        if (legacyConfig.copyFileTo (paths::configFile()))
-            appendSetupLog (dir, "Imported the Audio Watchdog configuration from " + legacyConfig.getFullPathName());
-    }
-
-    const auto quiet = regReadString (HKEY_LOCAL_MACHINE, legacyUninstallKey, L"QuietUninstallString");
-    if (quiet.isNotEmpty())
-    {
-        appendSetupLog (dir, "Removing Audio Watchdog: " + quiet);
-        if (! runAndWait (quiet, 120000))
-            appendSetupLog (dir, "The Audio Watchdog uninstaller did not finish in time.");
-    }
-    // Registered service without (or left over by) its uninstaller.
-    if (scm::exists (brand::legacyServiceName))
-    {
-        juce::String error;
-        if (! scm::uninstall (error, brand::legacyServiceName))
-            appendSetupLog (dir, "Could not remove the AudioWatchdog service: " + error);
-        regDeleteValue (HKEY_LOCAL_MACHINE, runKey, brand::legacyProductName);
-    }
-    appendSetupLog (dir, scm::exists (brand::legacyServiceName) ? "Audio Watchdog is still installed."
-                                                                : "Audio Watchdog removed.");
-}
 } // namespace
 
 void appendSetupLog (const juce::File& dir, const juce::String& line)
@@ -275,12 +230,6 @@ juce::String installedLocation()
     return regReadString (HKEY_LOCAL_MACHINE, uninstallKey, L"InstallLocation");
 }
 
-bool legacyInstalled()
-{
-    return scm::exists (brand::legacyServiceName)
-           || regReadString (HKEY_LOCAL_MACHINE, legacyUninstallKey, L"InstallLocation").isNotEmpty();
-}
-
 bool install (const Options& options, const Progress& progress, juce::String& error)
 {
     const win::ScopedComInit com (COINIT_APARTMENTTHREADED);
@@ -300,14 +249,7 @@ bool install (const Options& options, const Progress& progress, juce::String& er
         appendSetupLog (dir, "Logs folder permissions: " + aclError);
     appendSetupLog (dir, "Installing Audioslave " AUDIOSLAVE_VERSION_STRING " into " + dir.getFullPathName());
 
-    // 1. Audio Watchdog (predecessor).
-    if (options.removeLegacy && legacyInstalled())
-    {
-        progress (10, "Removendo o Audio Watchdog...");
-        migrateLegacy (dir);
-    }
-
-    // 2. Stop what is running (the service releases the executable).
+    // 1. Stop what is running (the service releases the executable).
     progress (18, utf8 ("Parando a versão em execução..."));
     win::SessionInstance::signalQuit(); // the tray of this session; others notice the update
     if (scm::exists())
@@ -317,7 +259,7 @@ bool install (const Options& options, const Progress& progress, juce::String& er
             appendSetupLog (dir, "Could not stop the running service: " + stopError);
     }
 
-    // 3. Binaries.
+    // 2. Binaries.
     progress (30, "Copiando arquivos...");
     if (! writePayload (exe, error))
         return false;
@@ -326,7 +268,7 @@ bool install (const Options& options, const Progress& progress, juce::String& er
     if (self != uninstaller && ! self.copyFileTo (uninstaller))
         appendSetupLog (dir, "Could not write Uninstall.exe: " + win::lastErrorText());
 
-    // 4. Configuration: keep every existing setting, apply the choices.
+    // 3. Configuration: keep every existing setting, apply the choices.
     progress (45, utf8 ("Gravando configuração..."));
     paths::ensureDirectory (paths::programDataDir());
     if (! win::applyConfigDirAcl (paths::programDataDir(), &aclError))
@@ -350,7 +292,7 @@ bool install (const Options& options, const Progress& progress, juce::String& er
     appendSetupLog (dir, "Exclusive Mode Protection: ENABLED | Format Standardization: "
                              + (cfg.formatStandardization ? "ENABLED (" + describeFormatTarget (cfg) + ")" : juce::String ("DISABLED")));
 
-    // 5. Windows service (automatic start, recovery, permissions).
+    // 4. Windows service (automatic start, recovery, permissions).
     progress (60, utf8 ("Instalando o serviço do Windows..."));
     juce::StringArray warnings;
     juce::String serviceError;
@@ -364,7 +306,7 @@ bool install (const Options& options, const Progress& progress, juce::String& er
         appendSetupLog (dir, "Service configuration warning: " + w);
     registerEventSource (dir);
 
-    // 6. Tray for every user at logon, Start Menu, Apps & Features.
+    // 5. Tray for every user at logon, Start Menu, Apps & Features.
     progress (75, "Registrando atalhos...");
     {
         win::RegistryKey run;
@@ -380,7 +322,7 @@ bool install (const Options& options, const Progress& progress, juce::String& er
         appendSetupLog (dir, "Some Start Menu shortcuts could not be created.");
     registerUninstallEntry (dir);
 
-    // 7. Start.
+    // 6. Start.
     progress (90, utf8 ("Iniciando o serviço..."));
     if (! scm::start (serviceError))
     {

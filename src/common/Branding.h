@@ -33,7 +33,4 @@ inline constexpr const wchar_t* trayQuitEventName = L"Local\\Audioslave.Tray.Qui
 // Required tooltip text (UTF-8) - do not change.
 inline constexpr const char* trayTooltipUtf8 = "O Audioslave está em execução";
 
-// Predecessor product, migrated by the installer.
-inline constexpr const wchar_t* legacyServiceName = L"AudioWatchdog";
-inline constexpr const wchar_t* legacyProductName = L"Audio Watchdog";
 } // namespace audioslave::brand

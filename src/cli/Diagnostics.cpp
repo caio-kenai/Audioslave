@@ -7,7 +7,6 @@
 #include "audio/windows/WindowsAudioFormatPolicy.h"
 #include "audio/windows/WindowsExclusiveModePolicy.h"
 #include "cli/Commands.h"
-#include "common/Branding.h"
 #include "config/Configuration.h"
 #include "core/ExclusiveModePolicy.h"
 #include "core/FormatPolicy.h"
@@ -97,9 +96,6 @@ void printEnvironment()
     const auto service = scm::query();
     printLine ("Service            : " + scm::stateName (service.state)
                + (service.binaryPath.isNotEmpty() ? " (" + service.binaryPath + ")" : juce::String()));
-    if (scm::exists (brand::legacyServiceName))
-        printLine ("Audio Watchdog     : still installed (" + scm::stateName (scm::query (brand::legacyServiceName).state)
-                   + ") - remove it, both would enforce the same devices");
 }
 
 void printProbe (const AudioEndpoint& e, const ExclusiveProbeResult& r)

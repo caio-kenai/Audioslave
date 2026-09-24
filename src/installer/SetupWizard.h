@@ -37,7 +37,7 @@ private:
     juce::Rectangle<int> featuresCard_, locationCard_;
 
     juce::Label title_, subtitle_, featuresHeader_, exclusiveNote_, rateLabel_, bitsLabel_, formatNote_, dirLabel_, status_;
-    juce::ToggleButton exclusive_, format_, launch_, legacy_;
+    juce::ToggleButton exclusive_, format_, launch_;
     juce::ComboBox rate_, bits_;
     juce::TextEditor dir_;
     juce::TextButton browse_ { "Procurar..." }, install_ { "Instalar" }, cancel_ { "Cancelar" };

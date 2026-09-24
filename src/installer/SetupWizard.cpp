@@ -49,7 +49,7 @@ struct SetupWizard::Worker final : public juce::Thread
 SetupWizard::SetupWizard (Options options, std::function<void (int)> onFinished)
     : options_ (std::move (options)), onFinished_ (std::move (onFinished))
 {
-    logo_ = juce::ImageCache::getFromMemory (AudioslaveAssets::normal64_png, AudioslaveAssets::normal64_pngSize);
+    logo_ = juce::ImageCache::getFromMemory (AudioslaveAssets::normal256_png, AudioslaveAssets::normal256_pngSize);
     const bool upgrade = installedLocation().isNotEmpty();
 
     title_.setText (brand::productName, juce::dontSendNotification);
@@ -99,9 +99,6 @@ SetupWizard::SetupWizard (Options options, std::function<void (int)> onFinished)
     launch_.setButtonText ("Iniciar o Audioslave ao concluir");
     launch_.setToggleState (options_.launchTray, juce::dontSendNotification);
 
-    legacy_.setButtonText (utf8 ("Remover o Audio Watchdog (substituído pelo Audioslave; a configuração é importada)"));
-    legacy_.setToggleState (options_.removeLegacy, juce::dontSendNotification);
-    legacy_.setVisible (legacyInstalled());
 
     progress_.setPercentageDisplay (false);
     progress_.setVisible (false);
@@ -135,15 +132,15 @@ SetupWizard::SetupWizard (Options options, std::function<void (int)> onFinished)
 
     for (auto* c : std::initializer_list<juce::Component*> { &title_, &subtitle_, &featuresHeader_, &exclusive_, &exclusiveNote_,
                                                              &format_, &rateLabel_, &rate_, &bitsLabel_, &bits_, &formatNote_,
-                                                             &dirLabel_, &dir_, &browse_, &launch_, &legacy_, &progress_,
+                                                             &dirLabel_, &dir_, &browse_, &launch_, &progress_,
                                                              &status_, &install_, &cancel_ })
         addChildComponent (c);
     for (auto* c : getChildren())
-        if (c != &progress_ && c != &legacy_)
+        if (c != &progress_)
             c->setVisible (true);
 
     updateFormatControls();
-    setSize (760, 640);
+    setSize (760, 580);
 }
 
 SetupWizard::~SetupWizard()
@@ -193,10 +190,9 @@ void SetupWizard::startInstall()
     options_.sampleRate = supportedSampleRates[static_cast<size_t> (juce::jmax (0, rate_.getSelectedItemIndex()))];
     options_.bitDepth = supportedBitDepths[static_cast<size_t> (juce::jmax (0, bits_.getSelectedItemIndex()))];
     options_.launchTray = launch_.getToggleState();
-    options_.removeLegacy = legacy_.isVisible() ? legacy_.getToggleState() : options_.removeLegacy;
 
     running_ = true;
-    for (auto* c : std::initializer_list<juce::Component*> { &format_, &dir_, &browse_, &launch_, &legacy_, &install_, &cancel_ })
+    for (auto* c : std::initializer_list<juce::Component*> { &format_, &dir_, &browse_, &launch_, &install_, &cancel_ })
         c->setEnabled (false);
     updateFormatControls();
     progress_.setVisible (true);
@@ -240,6 +236,7 @@ void SetupWizard::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
     if (logo_.isValid())
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImage (logo_, juce::Rectangle<float> (28.0f, 24.0f, 64.0f, 64.0f), juce::RectanglePlacement::centred);
     theme::paintCard (g, featuresCard_.toFloat());
     theme::paintCard (g, locationCard_.toFloat());
@@ -273,7 +270,7 @@ void SetupWizard::resized()
     formatNote_.setBounds (indent (card.removeFromTop (36), 48));
     area.removeFromTop (16);
 
-    locationCard_ = area.removeFromTop (legacy_.isVisible() ? 164 : 132);
+    locationCard_ = area.removeFromTop (132);
     card = locationCard_.reduced (20, 16);
     dirLabel_.setBounds (card.removeFromTop (20));
     card.removeFromTop (6);
@@ -283,8 +280,6 @@ void SetupWizard::resized()
     dir_.setBounds (row);
     card.removeFromTop (10);
     launch_.setBounds (card.removeFromTop (28));
-    if (legacy_.isVisible())
-        legacy_.setBounds (card.removeFromTop (30));
 
     auto bottom = area.removeFromBottom (40);
     cancel_.setBounds (bottom.removeFromRight (120));
