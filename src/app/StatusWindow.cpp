@@ -1,5 +1,7 @@
 #include "app/StatusWindow.h"
 #include "AudioslaveVersion.h"
+#include "app/Dialog.h"
+#include "app/SettingsReport.h"
 #include "app/Theme.h"
 #include "app/TrayIcon.h"
 #include "app/TrayMenu.h"
@@ -68,16 +70,18 @@ struct Card
 class StatusWindow::Content final : public juce::Component, private juce::TableListBoxModel
 {
 public:
-    explicit Content (Actions actions) : actions_ (std::move (actions))
+    explicit Content (Actions actions)
+        : actions_ (std::move (actions)), settings_ (actions_.request, [this] { showSettings (false); })
     {
         logo_ = TrayIcon::logoImage (false, 256);
 
         auto& header = table_.getHeader();
         header.addColumn (utf8 ("Dispositivo"), 1, 300, 140, -1, juce::TableHeaderComponent::defaultFlags);
-        header.addColumn ("Tipo", 2, 110);
-        header.addColumn ("Estado", 3, 120);
-        header.addColumn ("Modo exclusivo", 4, 140);
-        header.addColumn ("Formato", 5, 150);
+        header.addColumn ("Tipo", 2, 100, 80);
+        header.addColumn ("Estado", 3, 190, 110);
+        header.addColumn ("Modo exclusivo", 4, 140, 110);
+        header.addColumn ("Formato", 5, 150, 120);
+        header.addColumn ("Compatibilidade", 6, 150, 120);
         header.setStretchToFitActive (true);
         header.setPopupMenuActive (false);
         table_.setModel (this);
@@ -98,16 +102,32 @@ public:
         };
         scan_.onClick = [this] { if (actions_.scan) actions_.scan(); };
         logs_.onClick = [this] { if (actions_.openLogs) actions_.openLogs(); };
-        for (auto* b : { &toggle_, &scan_, &logs_ })
+        theme::setVariant (settingsButton_, "secondary");
+        settingsButton_.onClick = [this] { showSettings (true); };
+        for (auto* b : { &toggle_, &scan_, &settingsButton_, &logs_ })
         {
             b->setMouseCursor (juce::MouseCursor::PointingHandCursor);
             addAndMakeVisible (*b);
         }
+        addChildComponent (settings_);
 
-        setSize (940, 660);
+        setSize (1100, 680);
     }
 
-    ~Content() override { table_.setModel (nullptr); }
+    ~Content() override
+    {
+        *alive_ = false;
+        table_.setModel (nullptr);
+    }
+
+    void showSettings (bool show)
+    {
+        if (! show)
+            settings_.revert();
+        settings_.setVisible (show);
+        if (show)
+            settings_.toFront (false);
+    }
 
     void update (const TrayController& c)
     {
@@ -140,6 +160,9 @@ public:
             modeText_ = s->mode == "service" ? utf8 ("Serviço do Windows") : utf8 ("Modo portátil");
             logsDir_ = s->logsDir;
             rows_ = s->endpoints;
+            targetRate_ = static_cast<std::uint32_t> (s->sampleRate);
+            targetBits_ = static_cast<std::uint16_t> (s->bitDepth);
+            formatOn_ = s->formatStandardization;
         }
         else
         {
@@ -148,6 +171,8 @@ public:
             activity_ = { "ATIVIDADE", "--", {}, theme::textDim };
             modeText_ = {};
         }
+        connected_ = c.status().has_value();
+        settings_.update (c.status() ? &*c.status() : nullptr);
         table_.updateContent();
         table_.repaint();
         repaint();
@@ -220,6 +245,8 @@ public:
         footer.removeFromLeft (10);
         scan_.setBounds (footer.removeFromLeft (160));
         footer.removeFromLeft (10);
+        settingsButton_.setBounds (footer.removeFromLeft (160));
+        footer.removeFromLeft (10);
         logs_.setBounds (footer.removeFromLeft (190));
         footer.removeFromLeft (12);
         logsTextArea_ = footer;
@@ -229,6 +256,7 @@ public:
         auto inner = area.reduced (1);
         devicesTitle_ = inner.removeFromTop (48).reduced (18, 0);
         table_.setBounds (inner.reduced (8, 0).withTrimmedBottom (8));
+        settings_.setBounds (getLocalBounds());
     }
 
 private:
@@ -251,12 +279,33 @@ private:
         const auto& e = rows_[static_cast<size_t> (row)];
         const auto cell = juce::Rectangle<int> (width, height).reduced (10, 0);
 
+        if (column == 6)
+        {
+            if (! formatOn_ && ! e.disabledByAudioslave)
+                return;
+            juce::Colour colour = theme::textDim;
+            juce::String label;
+            switch (e.compatibility)
+            {
+                case Compatibility::compatible:       colour = theme::ok; label = utf8 ("Compatível"); break;
+                case Compatibility::depthUnsupported: colour = theme::warning; label = utf8 ("Limitado"); break;
+                case Compatibility::rateUnsupported:  colour = theme::danger; label = utf8 ("Incompatível"); break;
+                case Compatibility::unknown:          if (e.state != EndpointState::active) return; label = utf8 ("Desconhecido"); break;
+            }
+            theme::paintPill (g, cell.toFloat().withSizeKeepingCentre ((float) cell.getWidth(), 22.0f)
+                                     .withWidth (juce::jmin (124.0f, (float) cell.getWidth())), colour, label);
+            return;
+        }
+
         if (column == 4)
         {
+            if (e.disabledByAudioslave)
+                return;
             const bool blocked = e.exclusive == "blocked", allowed = e.exclusive == "allowed";
             const auto colour = blocked ? theme::ok : allowed ? theme::danger : theme::warning;
             const auto label = blocked ? juce::String ("Bloqueado") : allowed ? juce::String ("Permitido") : juce::String ("Desconhecido");
-            theme::paintPill (g, cell.toFloat().withSizeKeepingCentre ((float) cell.getWidth(), 22.0f).withWidth (118.0f), colour, label);
+            theme::paintPill (g, cell.toFloat().withSizeKeepingCentre ((float) cell.getWidth(), 22.0f)
+                                     .withWidth (juce::jmin (118.0f, (float) cell.getWidth())), colour, label);
             return;
         }
 
@@ -271,20 +320,21 @@ private:
                 break;
             case 2: value = flowText (e.flow); colour = theme::textDim; break;
             case 3:
-                value = stateText (e.state);
-                colour = e.state == EndpointState::active ? theme::text : theme::textFaint;
+                value = e.disabledByAudioslave ? utf8 ("Desativado pelo Audioslave") : stateText (e.state);
+                colour = e.disabledByAudioslave ? theme::warning : e.state == EndpointState::active ? theme::text : theme::textFaint;
                 break;
             case 5: value = e.format.isNotEmpty() ? e.format : juce::String (utf8 ("—")); colour = theme::textDim; break;
             default: break;
         }
         g.setColour (colour);
         g.setFont (f);
-        g.drawText (value, cell, juce::Justification::centredLeft, true);
+        // The default device's badge keeps its room: the name is shortened instead.
+        const auto textArea = column == 1 && e.isDefault ? cell.withTrimmedRight (62) : cell;
+        g.drawText (value, textArea, juce::Justification::centredLeft, true);
         if (column == 1 && e.isDefault)
         {
-            const float nameW = juce::GlyphArrangement::getStringWidth (f, value);
-            const auto badge = juce::Rectangle<float> (juce::jmin ((float) cell.getX() + nameW + 10.0f, (float) cell.getRight() - 52.0f),
-                                                       (float) height * 0.5f - 9.0f, 52.0f, 18.0f);
+            const float nameW = juce::jmin (juce::GlyphArrangement::getStringWidth (f, value), (float) textArea.getWidth());
+            const auto badge = juce::Rectangle<float> ((float) cell.getX() + nameW + 10.0f, (float) height * 0.5f - 9.0f, 52.0f, 18.0f);
             g.setColour (theme::accentSoft);
             g.fillRoundedRectangle (badge, 9.0f);
             g.setColour (theme::accentLight);
@@ -293,10 +343,112 @@ private:
         }
     }
 
+    juce::String getCellTooltip (int row, int column) override
+    {
+        if (row < 0 || row >= static_cast<int> (rows_.size()))
+            return {};
+        const auto& e = rows_[static_cast<size_t> (row)];
+        if (column == 6 && e.compatibility != Compatibility::unknown)
+        {
+            DeviceReport d;
+            d.compatibility = e.compatibility;
+            d.capabilities = FormatCapabilities::deserialise (e.capabilities);
+            return describeLimitation (d, targetRate_, targetBits_);
+        }
+        if (column == 1)
+            return e.customName ? utf8 ("Nome mantido pelo Audioslave. Clique com o botão direito para alterar.")
+                                : utf8 ("Clique com o botão direito para renomear.");
+        return {};
+    }
+
+    void cellClicked (int row, int, const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu())
+            showDeviceMenu (row);
+    }
+
+    void showDeviceMenu (int row)
+    {
+        if (row < 0 || row >= static_cast<int> (rows_.size()) || ! actions_.request)
+            return;
+        table_.selectRow (row);
+        const auto device = rows_[static_cast<size_t> (row)];
+        juce::PopupMenu menu;
+        menu.addSectionHeader (device.name);
+        menu.addItem (1, utf8 ("Renomear…"), connected_);
+        if (device.customName)
+            menu.addItem (2, utf8 ("Deixar de manter o nome escolhido"), connected_);
+        if (device.disabledByAudioslave)
+            menu.addItem (3, utf8 ("Reativar dispositivo"), connected_);
+        auto alive = alive_;
+        menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition().withMinimumWidth (260), [this, alive, device] (int choice)
+        {
+            if (! *alive)
+                return;
+            if (choice == 1)
+                rename (device);
+            else if (choice == 2)
+                send (ipc::Command::rename, device.id, {}, utf8 ("Não foi possível liberar o nome"));
+            else if (choice == 3)
+                send (ipc::Command::enable, device.id, {}, utf8 ("Não foi possível reativar o dispositivo"));
+        });
+    }
+
+    void rename (const EndpointStatus& device)
+    {
+        auto editor = std::make_unique<juce::TextEditor>();
+        editor->setFont (theme::font (15.0f));
+        editor->setIndents (10, 8);
+        editor->setText (device.description.isNotEmpty() ? device.description : device.name, false);
+        editor->selectAll();
+        editor->setSize (100, 38);
+        auto* raw = editor.get();
+
+        theme::DialogOptions options;
+        options.icon = juce::MessageBoxIconType::QuestionIcon;
+        options.title = "Renomear dispositivo";
+        options.message = utf8 ("O nome é aplicado no Windows e mantido pelo Audioslave, mesmo que uma atualização do Windows "
+                                "ou do driver o redefina. O Windows exibe o nome seguido do adaptador, por exemplo "
+                                "\"Nome (Realtek Audio)\".");
+        options.buttons = { "Renomear", "Cancelar" };
+        options.extra = std::move (editor);
+        auto alive = alive_;
+        theme::showDialog (std::move (options), [this, alive, id = device.id] (int button, juce::Component* extra)
+        {
+            if (! *alive || button != 0)
+                return;
+            const auto name = static_cast<juce::TextEditor*> (extra)->getText().trim();
+            if (name.isEmpty())
+                return;
+            send (ipc::Command::rename, id, name, utf8 ("Não foi possível renomear o dispositivo"));
+        });
+        raw->grabKeyboardFocus();
+    }
+
+    void send (ipc::Command command, const juce::String& id, const juce::String& name, const juce::String& failure)
+    {
+        auto* args = new juce::DynamicObject();
+        args->setProperty ("id", id);
+        args->setProperty ("name", name);
+        auto alive = alive_;
+        actions_.request (command, juce::var (args), [alive, failure] (const ipc::Reply& reply)
+        {
+            if (*alive && (! reply.delivered || ! reply.ok))
+                theme::showMessage (juce::MessageBoxIconType::WarningIcon, failure, reply.error);
+        });
+    }
+
     Actions actions_;
+    std::shared_ptr<bool> alive_ = std::make_shared<bool> (true);
+    SettingsView settings_;
     juce::Image logo_;
     juce::TableListBox table_;
     juce::TextButton toggle_ { "Pausar monitoramento" }, scan_ { "Verificar agora" }, logs_ { "Abrir pasta de logs" };
+    juce::TextButton settingsButton_ { juce::String::fromUTF8 ("Configurações") };
+    std::uint32_t targetRate_ = 48000;
+    std::uint16_t targetBits_ = 24;
+    bool formatOn_ = false;
+    bool connected_ = false;
     std::vector<EndpointStatus> rows_;
     Card exclusive_, format_, activity_;
     juce::String stateText_, modeText_, logsDir_;
@@ -315,7 +467,7 @@ StatusWindow::StatusWindow (Actions actions, std::function<void()> onClose)
     setDropShadowEnabled (true);
     setContentOwned (new Content (std::move (actions)), true);
     setResizable (true, true);
-    setResizeLimits (760, 560, 10000, 10000);
+    setResizeLimits (860, 560, 10000, 10000);
     setIcon (TrayIcon::logoImage (false, 64));
     centreWithSize (getWidth(), getHeight());
 
@@ -351,6 +503,12 @@ void StatusWindow::update (const TrayController& controller)
 {
     if (auto* content = dynamic_cast<Content*> (getContentComponent()))
         content->update (controller);
+}
+
+void StatusWindow::showSettings (bool show)
+{
+    if (auto* content = dynamic_cast<Content*> (getContentComponent()))
+        content->showSettings (show);
 }
 
 void StatusWindow::closeButtonPressed()

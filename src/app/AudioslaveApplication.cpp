@@ -2,6 +2,7 @@
 #include "app/AudioslaveApplication.h"
 #include "AudioslaveVersion.h"
 #include "app/Dialog.h"
+#include "app/SettingsReport.h"
 #include "app/StatusWindow.h"
 #include "app/TrayIcon.h"
 #include "app/TrayMenu.h"
@@ -87,6 +88,7 @@ void AudioslaveApplication::initialise (const juce::String&)
     }
 
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel_);
+    tooltips_ = std::make_unique<juce::TooltipWindow> (nullptr, 600);
 
     serviceMode_ = scm::exists();
     const auto config = loadConfiguration (paths::configFile(), false).config;
@@ -153,6 +155,7 @@ void AudioslaveApplication::shutdown()
         session_->stopListening();
     juce::PopupMenu::dismissAllActiveMenus();
     window_.reset();
+    tooltips_.reset();
     tray_.reset();
 
     // Background jobs (a pipe connect may be in flight) finish first.
@@ -198,8 +201,139 @@ void AudioslaveApplication::controlDisconnected()
 
 void AudioslaveApplication::statusPushed (const ipc::StatusSnapshot& status)
 {
+    statusReceived (status);
+}
+
+void AudioslaveApplication::statusReceived (const ipc::StatusSnapshot& status)
+{
     controller_.setStatus (status);
     refresh();
+    notifyDeviceEvents (status);
+    promptPendingDisable (status);
+}
+
+void AudioslaveApplication::notifyDeviceEvents (const ipc::StatusSnapshot& status)
+{
+    juce::int64 newest = lastEventSequence_;
+    juce::StringArray disabled, reenabled, other;
+    for (const auto& e : status.events)
+    {
+        newest = juce::jmax (newest, e.sequence);
+        // Changes the user just applied are reported by the settings screen.
+        if (lastEventSequence_ < 0 || e.sequence <= lastEventSequence_ || e.interactive)
+            continue;
+        switch (e.action)
+        {
+            case DeviceAction::disabled:    disabled.add (e.name); break;
+            case DeviceAction::reenabled:   reenabled.add (e.name); break;
+            case DeviceAction::leftEnabled:
+                other.add (e.name + utf8 (" voltou a ser habilitado várias vezes e não será mais desabilitado até a configuração mudar."));
+                break;
+            case DeviceAction::failed:      other.add (utf8 ("Falha em ") + e.name + ": " + e.reason); break;
+            default: break;
+        }
+    }
+    lastEventSequence_ = juce::jmax<juce::int64> (newest, 0);
+    if (tray_ == nullptr || (disabled.isEmpty() && reenabled.isEmpty() && other.isEmpty()))
+        return;
+
+    juce::StringArray lines;
+    if (! disabled.isEmpty())
+        lines.add ((disabled.size() == 1 ? utf8 ("Desabilitado (não suporta a configuração selecionada): ")
+                                         : utf8 ("Desabilitados (não suportam a configuração selecionada): "))
+                   + disabled.joinIntoString (", "));
+    if (! reenabled.isEmpty())
+        lines.add (utf8 ("Reativado: ") + reenabled.joinIntoString (", "));
+    lines.addArray (other);
+    Logger::instance().info ("Tray: device notification: " + lines.joinIntoString (" | "));
+    tray_->showInfoBubble (utf8 ("Audioslave — dispositivos de áudio"), lines.joinIntoString ("\n"));
+}
+
+void AudioslaveApplication::promptPendingDisable (const ipc::StatusSnapshot& status)
+{
+    // The policy was turned on outside the window (config.ini) and has not
+    // been confirmed: ask once per session, never disable silently.
+    if (pendingPromptShown_ || status.pendingDisable.empty() || ! status.disableIncompatibleDevices
+        || status.disablePolicyConfirmed || quitting_)
+        return;
+    pendingPromptShown_ = true;
+
+    ipc::AudioSettings settings;
+    settings.formatStandardization = status.formatStandardization;
+    settings.sampleRate = static_cast<std::uint32_t> (status.sampleRate);
+    settings.bitDepth = static_cast<std::uint16_t> (status.bitDepth);
+    settings.disableIncompatibleDevices = true;
+    auto preview = buildPreview (settings, status.pendingDisable);
+
+    theme::DialogOptions options;
+    options.icon = juce::MessageBoxIconType::WarningIcon;
+    options.title = utf8 ("Confirmar a desativação de dispositivos");
+    options.message = utf8 ("Alguns dispositivos de áudio não suportam ") + status.formatTarget
+                      + utf8 (". A configuração atual desabilita os dispositivos incompatíveis; os seguintes dispositivos "
+                              "poderão ser desabilitados. Cancelar desliga essa opção sem desabilitar nada.");
+    options.buttons = { "Continuar", "Cancelar" };
+    options.destructive = true;
+    auto details = std::make_unique<juce::TextEditor>();
+    details->setMultiLine (true, true);
+    details->setReadOnly (true);
+    details->setCaretVisible (false);
+    details->setFont (theme::font (13.5f));
+    details->setColour (juce::TextEditor::backgroundColourId, theme::surface);
+    details->setColour (juce::TextEditor::textColourId, theme::textDim);
+    details->setIndents (10, 8);
+    details->setText (preview.details, false);
+    details->setSize (100, juce::jlimit (60, 260, juce::StringArray::fromLines (preview.details).size() * 19 + 20));
+    options.extra = std::move (details);
+
+    auto alive = alive_;
+    theme::showDialog (std::move (options), [this, alive, settings] (int button, juce::Component*)
+    {
+        if (! alive->load())
+            return;
+        auto chosen = settings;
+        chosen.confirmDisable = button == 0;
+        chosen.disableIncompatibleDevices = button == 0;
+        Logger::instance().info (juce::String ("Tray: the user ") + (button == 0 ? "confirmed" : "declined")
+                                 + " the incompatible-device policy.");
+        request (ipc::Command::configure, ipc::toVar (chosen), [chosen] (const ipc::Reply& reply)
+        {
+            if (! reply.delivered || ! reply.ok)
+            {
+                theme::showMessage (juce::MessageBoxIconType::WarningIcon, utf8 ("Não foi possível aplicar a configuração"),
+                                    reply.error);
+                return;
+            }
+            const auto outcome = buildOutcome (chosen, ipc::deviceReportsFromVar (reply.result.getProperty ("devices", {})),
+                                               reply.result.getProperty ("paused", false));
+            theme::showMessage (outcome.problems ? juce::MessageBoxIconType::WarningIcon : juce::MessageBoxIconType::InfoIcon,
+                                chosen.confirmDisable ? outcome.title : utf8 ("Opção desligada"),
+                                chosen.confirmDisable ? outcome.message + "\n\n" + outcome.details
+                                                      : utf8 ("Nenhum dispositivo foi desabilitado."));
+        });
+    });
+}
+
+void AudioslaveApplication::request (ipc::Command command, const juce::var& args, std::function<void (const ipc::Reply&)> done)
+{
+    if (client_ == nullptr || ! client_->isConnected())
+    {
+        ipc::Reply reply;
+        reply.error = utf8 ("Sem conexão com o serviço Audioslave.");
+        if (done)
+            done (reply);
+        return;
+    }
+    Logger::instance().info ("Tray: " + ipc::commandName (command) + " requested by the user.");
+    auto alive = alive_;
+    client_->send (command, args, [this, alive, done = std::move (done)] (const ipc::Reply& reply)
+    {
+        if (! alive->load())
+            return;
+        if (reply.status)
+            statusReceived (*reply.status);
+        if (done)
+            done (reply);
+    });
 }
 
 void AudioslaveApplication::timerCallback()
@@ -274,7 +408,8 @@ void AudioslaveApplication::showMenu (juce::Rectangle<int> iconArea)
         switch (choice)
         {
             case menuTitle:
-            case menuOpen:   showStatusWindow(); break;
+            case menuOpen:     showStatusWindow(); break;
+            case menuSettings: showSettings(); break;
             case menuExit:   confirmExit(); break;
             default: break;
         }
@@ -292,6 +427,10 @@ void AudioslaveApplication::showStatusWindow()
         actions.resume = [this] { resumeMonitoring(); };
         actions.scan = [this] { scanNow(); };
         actions.openLogs = [this] { openLogs(); };
+        actions.request = [this] (ipc::Command command, const juce::var& args, std::function<void (const ipc::Reply&)> done)
+        {
+            request (command, args, std::move (done));
+        };
         auto alive = alive_;
         window_ = std::make_unique<StatusWindow> (std::move (actions), [this, alive]
         {
@@ -303,6 +442,13 @@ void AudioslaveApplication::showStatusWindow()
     window_->setVisible (true);
     window_->setMinimised (false);
     window_->toFront (true);
+}
+
+void AudioslaveApplication::showSettings()
+{
+    showStatusWindow();
+    if (window_ != nullptr)
+        window_->showSettings (true);
 }
 
 void AudioslaveApplication::sendCommand (ipc::Command command, const juce::String& failureText,
@@ -326,7 +472,7 @@ void AudioslaveApplication::sendCommand (ipc::Command command, const juce::Strin
         if (action)
             controller_.setBusy (false);
         if (reply.status)
-            controller_.setStatus (*reply.status);
+            statusReceived (*reply.status);
 
         const bool ok = reply.delivered && reply.ok;
         if (! ok && action)

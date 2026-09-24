@@ -8,6 +8,7 @@
 // resizing from the edges. Its position, size and maximised state are
 // remembered per user (ui.settings in the user's AppData folder).
 
+#include "app/SettingsView.h"
 #include "app/TrayController.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -22,6 +23,8 @@ public:
     struct Actions
     {
         std::function<void()> pause, resume, scan, openLogs;
+        // Sends a command with arguments to the service (reply on the message thread).
+        SettingsView::Request request;
     };
 
     StatusWindow (Actions actions, std::function<void()> onClose);
@@ -29,6 +32,9 @@ public:
 
     // Refreshes every field from the controller.
     void update (const TrayController& controller);
+
+    // Shows the "Configurações" page (or the dashboard).
+    void showSettings (bool show);
 
     void closeButtonPressed() override;
     bool keyPressed (const juce::KeyPress& key) override;

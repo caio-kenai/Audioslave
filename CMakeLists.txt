@@ -219,6 +219,10 @@ target_sources(Audioslave PRIVATE
     src/app/TrayMenu.cpp
     src/app/StatusWindow.h
     src/app/StatusWindow.cpp
+    src/app/SettingsView.h
+    src/app/SettingsView.cpp
+    src/app/SettingsReport.h
+    src/app/SettingsReport.cpp
     src/app/Theme.h
     src/app/Theme.cpp
     src/app/Dialog.h
@@ -250,6 +254,7 @@ target_sources(audioslave_tests PRIVATE
     tests/FormatPolicyTests.cpp
     tests/FormatCompatibilityTests.cpp
     tests/DevicePolicyTests.cpp
+    tests/SettingsReportTests.cpp
     tests/EndpointMemoryTests.cpp
     tests/WatchdogEngineTests.cpp
     tests/ProtocolTests.cpp
@@ -258,7 +263,9 @@ target_sources(audioslave_tests PRIVATE
     tests/TrayControllerTests.cpp
     tests/WindowsIntegrationTests.cpp
     src/app/TrayController.h
-    src/app/TrayController.cpp)
+    src/app/TrayController.cpp
+    src/app/SettingsReport.h
+    src/app/SettingsReport.cpp)
 target_compile_definitions(audioslave_tests PRIVATE JUCE_USER_DEFINED_RC_FILE="AudioslaveTests.rc")
 target_include_directories(audioslave_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 audioslave_configure_executable(audioslave_tests)
@@ -320,6 +327,8 @@ target_sources(audioslave_screenshots PRIVATE
     src/app/TrayIcon.cpp
     src/app/TrayMenu.cpp
     src/app/StatusWindow.cpp
+    src/app/SettingsView.cpp
+    src/app/SettingsReport.cpp
     src/installer/SetupOptions.cpp
     src/installer/InstallerCore.cpp
     src/installer/SetupWizard.cpp)

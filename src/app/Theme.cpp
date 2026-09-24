@@ -178,6 +178,15 @@ std::unique_ptr<juce::Drawable> makeIcon (Icon icon, juce::Colour colour)
             p.startNewSubPath (10.0f, 3.0f);
             p.lineTo (10.0f, 9.5f);
             break;
+        case Icon::settings:
+            // Three sliders.
+            for (const auto [y, knob] : { std::pair (5.0f, 13.0f), std::pair (10.0f, 7.0f), std::pair (15.0f, 11.0f) })
+            {
+                p.startNewSubPath (3.0f, y);
+                p.lineTo (17.0f, y);
+                p.addEllipse (knob - 1.8f, y - 1.8f, 3.6f, 3.6f);
+            }
+            break;
     }
     // Same 20 x 20 frame for every icon, so they all scale alike.
     p.startNewSubPath (0.0f, 0.0f);

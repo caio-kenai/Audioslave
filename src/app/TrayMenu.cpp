@@ -200,6 +200,7 @@ juce::PopupMenu buildTrayMenu (const TrayController& controller, const TrayMenuA
     inPlace (menuScan, "Verificar agora", theme::Icon::refresh, [] (const auto& mm) { return mm.scanEnabled; }, actions.scan);
     menu.addSeparator();
     item (menuOpen, "Abrir", true, theme::Icon::window, theme::text);
+    item (menuSettings, juce::String::fromUTF8 ("Configurações"), true, theme::Icon::settings, theme::text);
     menu.addSeparator();
     item (menuExit, "Encerrar", m.exitEnabled, theme::Icon::power, theme::danger);
     return menu;

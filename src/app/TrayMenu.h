@@ -5,8 +5,8 @@
 // Pause, resume and "Verificar agora" run in place and keep the menu open
 // (custom items that are not triggered automatically), so several actions can
 // be taken in one go; the header, the pill and every item's enabled state
-// follow the live status while the menu is shown. Opening the window or
-// exiting closes the menu (their ids are returned by the menu).
+// follow the live status while the menu is shown. Opening the window, the
+// settings or exiting closes the menu (their ids are returned by the menu).
 
 #include "app/TrayController.h"
 
@@ -23,7 +23,8 @@ enum TrayMenuItem
     menuResume,
     menuScan,
     menuOpen,
-    menuExit
+    menuExit,
+    menuSettings
 };
 
 struct TrayMenuActions

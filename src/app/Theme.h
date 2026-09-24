@@ -49,7 +49,8 @@ enum class Icon
     refresh,
     window,
     folder,
-    power
+    power,
+    settings
 };
 std::unique_ptr<juce::Drawable> makeIcon (Icon icon, juce::Colour colour);
 

@@ -59,6 +59,13 @@ private:
     void refresh();
     void showMenu (juce::Rectangle<int> iconArea);
     void showStatusWindow();
+    void showSettings();
+    // Every status received (pushed or in a reply): device notifications and
+    // the pending-confirmation prompt.
+    void statusReceived (const ipc::StatusSnapshot& status);
+    void notifyDeviceEvents (const ipc::StatusSnapshot& status);
+    void promptPendingDisable (const ipc::StatusSnapshot& status);
+    void request (ipc::Command command, const juce::var& args, std::function<void (const ipc::Reply&)> done);
     void pauseMonitoring();
     void resumeMonitoring();
     void scanNow();
@@ -81,11 +88,14 @@ private:
     std::unique_ptr<TrayIcon> tray_;
     std::unique_ptr<StatusWindow> window_;
     std::unique_ptr<PortableHost> portableHost_;
+    std::unique_ptr<juce::TooltipWindow> tooltips_;
     juce::ThreadPool pool_ { juce::ThreadPoolOptions().withThreadName ("Audioslave tray job").withNumberOfThreads (2) };
     TrayController controller_;
     std::atomic<bool> connecting_ { false };
     bool serviceMode_ = false;
     bool quitting_ = false;
+    juce::int64 lastEventSequence_ = -1; // -1: nothing seen yet (never replay old events)
+    bool pendingPromptShown_ = false;
     int portableRestarts_ = 0;
 };
 } // namespace audioslave
