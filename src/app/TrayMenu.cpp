@@ -32,6 +32,10 @@ public:
             g.fillRoundedRectangle (getLocalBounds().reduced (5, 2).toFloat(), 6.0f);
         }
         auto r = getLocalBounds().reduced (14, 10).toFloat();
+        // drawImage uses the opacity of the current fill, which a menu item
+        // inherits from the menu window: without this the logo was drawn
+        // fully transparent until hovering set an opaque colour.
+        g.setOpacity (1.0f);
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImage (logo_, r.removeFromLeft (42.0f).withSizeKeepingCentre (42.0f, 42.0f), juce::RectanglePlacement::centred);
         r.removeFromLeft (12.0f);

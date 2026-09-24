@@ -142,7 +142,9 @@ public:
     {
         g.fillAll (theme::background);
 
-        // Header: logo, name, version, status pill.
+        // Header: logo, name, version, status pill. drawImage uses the
+        // current fill's opacity, so make sure it is opaque.
+        g.setOpacity (1.0f);
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImage (logo_, logoArea_.toFloat(), juce::RectanglePlacement::centred);
         g.setColour (theme::text);

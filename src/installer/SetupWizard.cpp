@@ -236,8 +236,12 @@ void SetupWizard::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
     if (logo_.isValid())
+    {
+        // drawImage uses the current fill's opacity.
+        g.setOpacity (1.0f);
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImage (logo_, juce::Rectangle<float> (28.0f, 24.0f, 64.0f, 64.0f), juce::RectanglePlacement::centred);
+    }
     theme::paintCard (g, featuresCard_.toFloat());
     theme::paintCard (g, locationCard_.toFloat());
 }
