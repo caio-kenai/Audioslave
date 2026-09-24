@@ -5,6 +5,8 @@
 //   /S                      silent install (keeps an existing configuration)
 //   /format=48000:24        enable format standardization (rate:bits)
 //   /noformat               disable format standardization
+//   /disableincompatible    also disable the devices that do not support the
+//                           format (implies the user's consent; off by default)
 //   /dir="C:\path"          install folder
 //   /notray                 do not start the tray application at the end
 //   /uninstall [/S] [/removedata]
@@ -27,6 +29,8 @@ struct Options
     bool format = false;
     std::uint32_t sampleRate = 48000;
     std::uint16_t bitDepth = 24;
+    bool disableSet = false;         // /disableincompatible given, or chosen in the wizard
+    bool disableIncompatible = false;
     juce::String dir;
 };
 

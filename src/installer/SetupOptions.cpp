@@ -19,6 +19,8 @@ Options parseOptions (const juce::StringArray& arguments, const juce::String& ex
             opt.removeData = true;
         else if (a == "/notray")
             opt.launchTray = false;
+        else if (a == "/disableincompatible")
+            opt.disableSet = opt.disableIncompatible = true;
         else if (a == "/noformat")
         {
             opt.formatSet = true;

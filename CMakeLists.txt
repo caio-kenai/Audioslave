@@ -292,6 +292,8 @@ target_sources(AudioslaveSetup PRIVATE
     src/installer/InstallerCore.cpp
     src/installer/SetupWizard.h
     src/installer/SetupWizard.cpp
+    src/app/SettingsReport.h
+    src/app/SettingsReport.cpp
     src/app/Theme.h
     src/app/Theme.cpp
     src/app/Dialog.h

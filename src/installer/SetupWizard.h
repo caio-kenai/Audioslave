@@ -29,6 +29,8 @@ private:
     void startInstall();
     void browse();
     void updateFormatControls();
+    // With the disable option: shows what it would disable and asks first.
+    void confirmThenInstall();
     void finished (bool ok, const juce::String& error);
 
     Options options_;
@@ -36,8 +38,9 @@ private:
     juce::Image logo_;
     juce::Rectangle<int> featuresCard_, locationCard_;
 
-    juce::Label title_, subtitle_, featuresHeader_, exclusiveNote_, rateLabel_, bitsLabel_, formatNote_, dirLabel_, status_;
-    juce::ToggleButton exclusive_, format_, launch_;
+    juce::Label title_, subtitle_, featuresHeader_, exclusiveNote_, rateLabel_, bitsLabel_, formatNote_, disableNote_, dirLabel_,
+        status_;
+    juce::ToggleButton exclusive_, format_, disable_, launch_;
     juce::ComboBox rate_, bits_;
     juce::TextEditor dir_;
     juce::TextButton browse_ { "Procurar..." }, install_ { "Instalar" }, cancel_ { "Cancelar" };

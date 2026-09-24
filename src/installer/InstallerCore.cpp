@@ -284,13 +284,25 @@ bool install (const Options& options, const Progress& progress, juce::String& er
         cfg.sampleRate = options.sampleRate;
         cfg.bitDepth = options.bitDepth;
     }
+    if (options.disableSet)
+    {
+        // Chosen (and confirmed) in the wizard, or /disableincompatible.
+        cfg.disableIncompatibleDevices = options.disableIncompatible && cfg.formatStandardization;
+        cfg.disableConfirmedFor = cfg.disableIncompatibleDevices ? formatTargetKey (cfg) : juce::String();
+    }
+    else if (options.formatSet && cfg.disableConfirmedFor != formatTargetKey (cfg))
+    {
+        // A new format needs a new confirmation.
+        cfg.disableConfirmedFor = {};
+    }
     if (auto saved = saveConfiguration (cfg, paths::configFile()); saved.failed())
     {
         error = utf8 ("Não foi possível gravar a configuração: ") + saved.getErrorMessage();
         return false;
     }
     appendSetupLog (dir, "Exclusive Mode Protection: ENABLED | Format Standardization: "
-                             + (cfg.formatStandardization ? "ENABLED (" + describeFormatTarget (cfg) + ")" : juce::String ("DISABLED")));
+                             + (cfg.formatStandardization ? "ENABLED (" + describeFormatTarget (cfg) + ")" : juce::String ("DISABLED"))
+                             + " | Disable incompatible devices: " + (cfg.disableIncompatibleDevices ? "ON" : "OFF"));
 
     // 4. Windows service (automatic start, recovery, permissions).
     progress (60, utf8 ("Instalando o serviço do Windows..."));

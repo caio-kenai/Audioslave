@@ -1,12 +1,19 @@
+#include "platform/windows/WinCommon.h"
 #include "installer/SetupWizard.h"
 #include "app/Dialog.h"
 #include "AudioslaveAssets.h"
 #include "AudioslaveVersion.h"
+#include "app/SettingsReport.h"
+#include "audio/windows/WindowsAudioEndpointEnumerator.h"
+#include "audio/windows/WindowsAudioFormatPolicy.h"
+#include "audio/windows/WindowsExclusiveModePolicy.h"
 #include "common/Branding.h"
 #include "common/Strings.h"
 #include "config/Configuration.h"
 #include "installer/InstallerCore.h"
+#include "core/WatchdogEngine.h"
 #include "platform/windows/Paths.h"
+#include "platform/windows/ScopedComInit.h"
 
 namespace audioslave::setup
 {
@@ -92,6 +99,15 @@ SetupWizard::SetupWizard (Options options, std::function<void (int)> onFinished)
                          juce::dontSendNotification);
     formatNote_.setColour (juce::Label::textColourId, theme::textDim);
 
+    // New option, off by default (an upgrade keeps the current choice).
+    disable_.setButtonText (utf8 ("Desabilitar dispositivos que não suportam a configuração selecionada"));
+    disable_.setToggleState (options_.disableSet ? options_.disableIncompatible : cfg.disableIncompatibleDevices,
+                             juce::dontSendNotification);
+    disableNote_.setText (utf8 ("Opcional. Os dispositivos afetados são listados para confirmação antes da instalação; "
+                                "pode ser alterado depois em Configurações."),
+                          juce::dontSendNotification);
+    disableNote_.setColour (juce::Label::textColourId, theme::textDim);
+
     dirLabel_.setText (utf8 ("Pasta de instalação:"), juce::dontSendNotification);
     dir_.setText (options_.dir, false);
     browse_.onClick = [this] { browse(); };
@@ -114,7 +130,7 @@ SetupWizard::SetupWizard (Options options, std::function<void (int)> onFinished)
     dirLabel_.setFont (theme::font (12.0f, true));
     dirLabel_.setColour (juce::Label::textColourId, theme::textFaint);
     dirLabel_.setText (utf8 ("PASTA DE INSTALAÇÃO"), juce::dontSendNotification);
-    for (auto* l : { &exclusiveNote_, &formatNote_ })
+    for (auto* l : { &exclusiveNote_, &formatNote_, &disableNote_ })
         l->setFont (theme::font (13.0f));
     for (auto* l : { &rateLabel_, &bitsLabel_, &status_ })
         l->setFont (theme::font (14.0f));
@@ -126,12 +142,13 @@ SetupWizard::SetupWizard (Options options, std::function<void (int)> onFinished)
         if (done_)
             onFinished_ (succeeded_ ? 0 : 1);
         else if (! running_)
-            startInstall();
+            confirmThenInstall();
     };
     cancel_.onClick = [this] { requestClose(); };
 
     for (auto* c : std::initializer_list<juce::Component*> { &title_, &subtitle_, &featuresHeader_, &exclusive_, &exclusiveNote_,
                                                              &format_, &rateLabel_, &rate_, &bitsLabel_, &bits_, &formatNote_,
+                                                             &disable_, &disableNote_,
                                                              &dirLabel_, &dir_, &browse_, &launch_, &progress_,
                                                              &status_, &install_, &cancel_ })
         addChildComponent (c);
@@ -140,7 +157,7 @@ SetupWizard::SetupWizard (Options options, std::function<void (int)> onFinished)
             c->setVisible (true);
 
     updateFormatControls();
-    setSize (760, 580);
+    setSize (760, 650);
 }
 
 SetupWizard::~SetupWizard()
@@ -152,8 +169,75 @@ SetupWizard::~SetupWizard()
 void SetupWizard::updateFormatControls()
 {
     const bool on = format_.getToggleState() && ! running_ && ! done_;
-    for (auto* c : std::initializer_list<juce::Component*> { &rateLabel_, &rate_, &bitsLabel_, &bits_ })
+    for (auto* c : std::initializer_list<juce::Component*> { &rateLabel_, &rate_, &bitsLabel_, &bits_, &disable_, &disableNote_ })
         c->setEnabled (on);
+}
+
+void SetupWizard::confirmThenInstall()
+{
+    if (! format_.getToggleState() || ! disable_.getToggleState())
+    {
+        startInstall();
+        return;
+    }
+
+    // Preview on this machine, exactly as the service will judge it.
+    ipc::AudioSettings settings;
+    settings.formatStandardization = true;
+    settings.sampleRate = supportedSampleRates[static_cast<size_t> (juce::jmax (0, rate_.getSelectedItemIndex()))];
+    settings.bitDepth = supportedBitDepths[static_cast<size_t> (juce::jmax (0, bits_.getSelectedItemIndex()))];
+    settings.disableIncompatibleDevices = true;
+
+    std::vector<DeviceReport> devices;
+    {
+        const win::ScopedComInit com (COINIT_APARTMENTTHREADED);
+        win::WindowsAudioEndpointEnumerator enumerator;
+        win::WindowsExclusiveModePolicy exclusive;
+        win::WindowsAudioFormatPolicy format;
+        DeviceStateStore state (paths::programDataDir().getChildFile ("devices.json"));
+        WatchdogEngine::Options engineOptions;
+        engineOptions.deviceState = &state;
+        auto candidate = loadConfiguration (paths::configFile(), false).config;
+        candidate.formatStandardization = true;
+        candidate.sampleRate = settings.sampleRate;
+        candidate.bitDepth = settings.bitDepth;
+        candidate.disableIncompatibleDevices = true;
+        WatchdogEngine engine (enumerator, exclusive, format, candidate, engineOptions);
+        devices = engine.analyze (candidate);
+    }
+
+    auto preview = buildPreview (settings, devices);
+    theme::DialogOptions options;
+    options.icon = juce::MessageBoxIconType::WarningIcon;
+    options.title = preview.disablesDevices ? preview.title : utf8 ("Desabilitar dispositivos incompatíveis?");
+    options.message = preview.disablesDevices
+                          ? preview.message
+                          : utf8 ("Nenhum dispositivo conectado agora será desabilitado. Dispositivos conectados depois que "
+                                  "não suportarem ")
+                                + juce::String (settings.sampleRate) + " Hz / " + juce::String (settings.bitDepth)
+                                + utf8 (" bits serão desabilitados automaticamente, com aviso e registro no log.");
+    options.buttons = { "Continuar", "Cancelar" };
+    options.destructive = true;
+    if (preview.details.isNotEmpty())
+    {
+        auto details = std::make_unique<juce::TextEditor>();
+        details->setMultiLine (true, true);
+        details->setReadOnly (true);
+        details->setCaretVisible (false);
+        details->setFont (theme::font (13.5f));
+        details->setColour (juce::TextEditor::backgroundColourId, theme::surface);
+        details->setColour (juce::TextEditor::textColourId, theme::textDim);
+        details->setIndents (10, 8);
+        details->setText (preview.details, false);
+        details->setSize (100, juce::jlimit (60, 260, juce::StringArray::fromLines (preview.details).size() * 19 + 20));
+        options.extra = std::move (details);
+    }
+    auto alive = alive_;
+    theme::showDialog (std::move (options), [this, alive] (int button, juce::Component*)
+    {
+        if (alive->load() && button == 0)
+            startInstall();
+    });
 }
 
 void SetupWizard::browse()
@@ -189,10 +273,12 @@ void SetupWizard::startInstall()
     options_.format = format_.getToggleState();
     options_.sampleRate = supportedSampleRates[static_cast<size_t> (juce::jmax (0, rate_.getSelectedItemIndex()))];
     options_.bitDepth = supportedBitDepths[static_cast<size_t> (juce::jmax (0, bits_.getSelectedItemIndex()))];
+    options_.disableSet = true;
+    options_.disableIncompatible = format_.getToggleState() && disable_.getToggleState();
     options_.launchTray = launch_.getToggleState();
 
     running_ = true;
-    for (auto* c : std::initializer_list<juce::Component*> { &format_, &dir_, &browse_, &launch_, &install_, &cancel_ })
+    for (auto* c : std::initializer_list<juce::Component*> { &format_, &disable_, &dir_, &browse_, &launch_, &install_, &cancel_ })
         c->setEnabled (false);
     updateFormatControls();
     progress_.setVisible (true);
@@ -257,7 +343,7 @@ void SetupWizard::resized()
 
     auto indent = [] (juce::Rectangle<int> r, int by) { return r.withTrimmedLeft (by); };
 
-    featuresCard_ = area.removeFromTop (212);
+    featuresCard_ = area.removeFromTop (280);
     auto card = featuresCard_.reduced (20, 16);
     featuresHeader_.setBounds (card.removeFromTop (20));
     card.removeFromTop (6);
@@ -271,7 +357,10 @@ void SetupWizard::resized()
     row.removeFromLeft (24);
     bitsLabel_.setBounds (row.removeFromLeft (150));
     bits_.setBounds (row.removeFromLeft (120).reduced (0, 3));
-    formatNote_.setBounds (indent (card.removeFromTop (36), 48));
+    formatNote_.setBounds (indent (card.removeFromTop (24), 48));
+    card.removeFromTop (8);
+    disable_.setBounds (indent (card.removeFromTop (28), 48));
+    disableNote_.setBounds (indent (card.removeFromTop (36), 96));
     area.removeFromTop (16);
 
     locationCard_ = area.removeFromTop (132);
