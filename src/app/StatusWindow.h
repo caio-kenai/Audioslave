@@ -1,9 +1,8 @@
 #pragma once
-// "Abrir": status window of the tray (JUCE DocumentWindow). Shows the live
-// state pushed by the service, both features, the last scan and every
-// monitored endpoint, with the same actions as the tray menu.
+// "Abrir": the tray's status window, drawn entirely by JUCE (own title bar,
+// dark theme). Shows the live state pushed by the service, both features,
+// activity, every monitored endpoint and the same actions as the tray menu.
 
-#include "app/Theme.h"
 #include "app/TrayController.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -27,10 +26,10 @@ public:
     void update (const TrayController& controller);
 
     void closeButtonPressed() override;
+    bool keyPressed (const juce::KeyPress& key) override;
 
 private:
     class Content;
-    theme::LookAndFeel lookAndFeel_;
     std::function<void()> onClose_;
 };
 } // namespace audioslave

@@ -1,6 +1,8 @@
 #include "app/StatusWindow.h"
 #include "AudioslaveVersion.h"
+#include "app/Theme.h"
 #include "app/TrayIcon.h"
+#include "app/TrayMenu.h"
 #include "common/Strings.h"
 
 namespace audioslave
@@ -24,26 +26,28 @@ juce::String stateText (EndpointState state)
     return "Ausente";
 }
 
-juce::String exclusiveText (const juce::String& value)
+// A summary card: small caption, large value, one line of detail.
+struct Card
 {
-    if (value == "blocked")
-        return "Bloqueado";
-    if (value == "allowed")
-        return "PERMITIDO";
-    return "Desconhecido";
-}
+    juce::String caption, value, detail;
+    juce::Colour valueColour = theme::text;
 
-juce::Colour stateColour (TrayController::UiState s)
-{
-    switch (s)
+    void paint (juce::Graphics& g, juce::Rectangle<float> area) const
     {
-        case TrayController::UiState::running:  return theme::ok;
-        case TrayController::UiState::paused:   return theme::warning;
-        case TrayController::UiState::starting:
-        case TrayController::UiState::stopping: return theme::accentBright;
-        default:                                return theme::danger;
+        theme::paintCard (g, area);
+        auto r = area.reduced (18.0f, 14.0f);
+        g.setColour (theme::textFaint);
+        g.setFont (theme::font (12.0f, true));
+        g.drawText (caption, r.removeFromTop (18.0f), juce::Justification::centredLeft, true);
+        r.removeFromTop (4.0f);
+        g.setColour (valueColour);
+        g.setFont (theme::font (21.0f, true));
+        g.drawFittedText (value, r.removeFromTop (30.0f).toNearestInt(), juce::Justification::centredLeft, 1);
+        g.setColour (theme::textDim);
+        g.setFont (theme::font (13.0f));
+        g.drawFittedText (detail, r.toNearestInt(), juce::Justification::topLeft, 2);
     }
-}
+};
 } // namespace
 
 class StatusWindow::Content final : public juce::Component, private juce::TableListBoxModel
@@ -53,41 +57,39 @@ public:
     {
         logo_ = TrayIcon::logoImage (false, 64);
 
-        title_.setText (juce::String ("Audioslave ") + AUDIOSLAVE_VERSION_STRING, juce::dontSendNotification);
-        title_.setFont (juce::FontOptions (22.0f, juce::Font::bold));
-        subtitle_.setText (utf8 ("Proteção contra o modo exclusivo dos dispositivos de áudio"), juce::dontSendNotification);
-        subtitle_.setColour (juce::Label::textColourId, theme::textDim);
-        state_.setFont (juce::FontOptions (16.0f, juce::Font::bold));
-
-        for (auto* l : { &title_, &subtitle_, &state_, &exclusive_, &format_, &mode_, &scan_, &totals_, &logs_ })
-            addAndMakeVisible (*l);
-        for (auto* l : { &exclusive_, &format_, &mode_, &scan_, &totals_, &logs_ })
-            l->setFont (juce::FontOptions (14.0f));
-        logs_.setColour (juce::Label::textColourId, theme::textDim);
-
         auto& header = table_.getHeader();
-        header.addColumn (utf8 ("Dispositivo"), 1, 290, 120, -1, juce::TableHeaderComponent::defaultFlags);
-        header.addColumn ("Tipo", 2, 90);
-        header.addColumn ("Estado", 3, 100);
-        header.addColumn ("Modo exclusivo", 4, 120);
-        header.addColumn ("Formato", 5, 140);
+        header.addColumn (utf8 ("Dispositivo"), 1, 300, 140, -1, juce::TableHeaderComponent::defaultFlags);
+        header.addColumn ("Tipo", 2, 110);
+        header.addColumn ("Estado", 3, 120);
+        header.addColumn ("Modo exclusivo", 4, 140);
+        header.addColumn ("Formato", 5, 150);
         header.setStretchToFitActive (true);
+        header.setPopupMenuActive (false);
         table_.setModel (this);
-        table_.setRowHeight (24);
-        table_.setColour (juce::ListBox::backgroundColourId, theme::surface);
+        table_.setRowHeight (34);
+        table_.setHeaderHeight (34);
+        table_.getViewport()->setScrollBarThickness (10);
+        table_.getViewport()->setScrollBarsShown (true, false);
         addAndMakeVisible (table_);
 
+        theme::setVariant (toggle_, "primary");
+        theme::setVariant (scan_, "secondary");
+        theme::setVariant (logs_, "ghost");
         toggle_.onClick = [this]
         {
-            if (paused_ ? static_cast<bool> (actions_.resume) : static_cast<bool> (actions_.pause))
-                paused_ ? actions_.resume() : actions_.pause();
+            auto& action = paused_ ? actions_.resume : actions_.pause;
+            if (action)
+                action();
         };
-        scanButton_.onClick = [this] { if (actions_.scan) actions_.scan(); };
-        logsButton_.onClick = [this] { if (actions_.openLogs) actions_.openLogs(); };
-        for (auto* b : { &toggle_, &scanButton_, &logsButton_ })
+        scan_.onClick = [this] { if (actions_.scan) actions_.scan(); };
+        logs_.onClick = [this] { if (actions_.openLogs) actions_.openLogs(); };
+        for (auto* b : { &toggle_, &scan_, &logs_ })
+        {
+            b->setMouseCursor (juce::MouseCursor::PointingHandCursor);
             addAndMakeVisible (*b);
+        }
 
-        setSize (820, 560);
+        setSize (940, 660);
     }
 
     ~Content() override { table_.setModel (nullptr); }
@@ -95,51 +97,41 @@ public:
     void update (const TrayController& c)
     {
         const auto ui = c.uiState();
-        state_.setText ("Status: " + TrayController::uiStateText (ui), juce::dontSendNotification);
-        state_.setColour (juce::Label::textColourId, stateColour (ui));
+        stateText_ = TrayController::uiStateText (ui);
+        stateColour_ = trayStateColour (ui);
 
         const auto menu = c.menu();
         paused_ = ! menu.pauseEnabled && menu.resumeEnabled;
         toggle_.setButtonText (paused_ ? "Retomar monitoramento" : "Pausar monitoramento");
         toggle_.setEnabled (menu.pauseEnabled || menu.resumeEnabled);
-        scanButton_.setEnabled (menu.scanEnabled);
+        scan_.setEnabled (menu.scanEnabled);
 
         rows_.clear();
         if (const auto& s = c.status())
         {
-            exclusive_.setText (s->exclusiveProtection ? utf8 ("Proteção contra modo exclusivo: ATIVADA")
-                                                       : utf8 ("Proteção contra modo exclusivo: DESATIVADA (config.ini)"),
-                                juce::dontSendNotification);
-            format_.setText (s->formatStandardization ? utf8 ("Padronização de formato: ATIVADA (") + s->formatTarget + ")"
-                                                      : utf8 ("Padronização de formato: DESATIVADA"),
-                             juce::dontSendNotification);
-            mode_.setText (s->mode == "service" ? utf8 ("Modo: serviço do Windows (Audioslave)")
-                                                : utf8 ("Modo: portátil (sem serviço instalado)"),
-                           juce::dontSendNotification);
-            if (s->hasScanned)
-            {
-                const auto& r = s->lastScan;
-                scan_.setText (utf8 ("Última verificação: ") + s->lastScanTime.formatted ("%d/%m/%Y %H:%M:%S") + " - "
-                                   + juce::String (r.endpointsScanned) + " dispositivo(s), " + juce::String (r.exclusiveFixed)
-                                   + utf8 (" correção(ões), ") + juce::String (r.errors()) + " erro(s)",
-                               juce::dontSendNotification);
-            }
-            else
-            {
-                scan_.setText (utf8 ("Última verificação: ainda não executada"), juce::dontSendNotification);
-            }
-            totals_.setText (utf8 ("Desde o início: ") + juce::String (s->totalExclusiveFixes)
-                                 + utf8 (" correção(ões) de modo exclusivo, ") + juce::String (s->totalFormatChanges)
-                                 + utf8 (" mudança(s) de formato"),
-                             juce::dontSendNotification);
-            logs_.setText ("Logs: " + s->logsDir, juce::dontSendNotification);
+            exclusive_ = { "MODO EXCLUSIVO", s->exclusiveProtection ? "Bloqueado" : "Desativado",
+                           s->exclusiveProtection ? utf8 ("Nenhum aplicativo assume o controle exclusivo dos dispositivos.")
+                                                  : utf8 ("Proteção desligada no config.ini."),
+                           s->exclusiveProtection ? theme::ok : theme::warning };
+            format_ = { utf8 ("FORMATO PADRÃO"), s->formatStandardization ? s->formatTarget : juce::String ("Livre"),
+                        s->formatStandardization ? utf8 ("Aplicado nos dispositivos que suportam o formato.")
+                                                 : utf8 ("Padronização de formato desativada."),
+                        theme::text };
+            activity_ = { "ATIVIDADE", juce::String (s->totalExclusiveFixes) + utf8 (" correção(ões)"),
+                          s->hasScanned ? utf8 ("Última verificação às ") + s->lastScanTime.formatted ("%H:%M:%S") + ", "
+                                              + juce::String (s->lastScan.endpointsScanned) + " dispositivo(s)"
+                                        : utf8 ("Aguardando a primeira verificação."),
+                          theme::text };
+            modeText_ = s->mode == "service" ? utf8 ("Serviço do Windows") : utf8 ("Modo portátil");
+            logsDir_ = s->logsDir;
             rows_ = s->endpoints;
         }
         else
         {
-            exclusive_.setText (utf8 ("Sem conexão com o serviço Audioslave."), juce::dontSendNotification);
-            for (auto* l : { &format_, &mode_, &scan_, &totals_ })
-                l->setText ({}, juce::dontSendNotification);
+            exclusive_ = { "MODO EXCLUSIVO", "--", utf8 ("Sem conexão com o serviço Audioslave."), theme::textDim };
+            format_ = { utf8 ("FORMATO PADRÃO"), "--", {}, theme::textDim };
+            activity_ = { "ATIVIDADE", "--", {}, theme::textDim };
+            modeText_ = {};
         }
         table_.updateContent();
         table_.repaint();
@@ -149,41 +141,89 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.fillAll (theme::background);
-        g.drawImage (logo_, juce::Rectangle<float> (20.0f, 18.0f, 56.0f, 56.0f), juce::RectanglePlacement::centred);
-        g.setColour (theme::outline);
-        g.fillRect (20, 88, getWidth() - 40, 1);
+
+        // Header: logo, name, version, status pill.
+        g.drawImage (logo_, logoArea_.toFloat(), juce::RectanglePlacement::centred);
+        g.setColour (theme::text);
+        g.setFont (theme::font (26.0f, true));
+        g.drawText ("Audioslave", titleArea_, juce::Justification::bottomLeft, false);
+        g.setColour (theme::textDim);
+        g.setFont (theme::font (14.0f));
+        g.drawText (utf8 ("Versão ") + AUDIOSLAVE_VERSION_STRING + (modeText_.isNotEmpty() ? utf8 ("  ·  ") + modeText_ : juce::String()),
+                    subtitleArea_, juce::Justification::topLeft, false);
+        theme::paintPill (g, pillArea_.toFloat(), stateColour_, stateText_);
+
+        exclusive_.paint (g, cards_[0].toFloat());
+        format_.paint (g, cards_[1].toFloat());
+        activity_.paint (g, cards_[2].toFloat());
+
+        // Devices card.
+        theme::paintCard (g, devicesCard_.toFloat());
+        g.setColour (theme::text);
+        g.setFont (theme::font (16.0f, true));
+        g.drawText ("Dispositivos monitorados", devicesTitle_, juce::Justification::centredLeft, false);
+        g.setColour (theme::textFaint);
+        g.setFont (theme::font (13.0f));
+        g.drawText (juce::String (static_cast<int> (rows_.size())) + " endpoint(s)", devicesTitle_, juce::Justification::centredRight,
+                    false);
+
+        if (logsDir_.isNotEmpty())
+        {
+            g.setColour (theme::textFaint);
+            g.setFont (theme::font (12.5f));
+            g.drawFittedText ("Logs: " + logsDir_, logsTextArea_, juce::Justification::centredRight, 1);
+        }
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced (20);
-        auto head = area.removeFromTop (60);
-        head.removeFromLeft (70);
-        title_.setBounds (head.removeFromTop (30));
-        subtitle_.setBounds (head);
-        area.removeFromTop (16);
+        auto area = getLocalBounds().reduced (28, 22);
 
-        state_.setBounds (area.removeFromTop (26));
-        for (auto* l : { &exclusive_, &format_, &mode_, &scan_, &totals_, &logs_ })
-            l->setBounds (area.removeFromTop (22));
-        area.removeFromTop (8);
+        auto header = area.removeFromTop (64);
+        logoArea_ = header.removeFromLeft (64);
+        header.removeFromLeft (16);
+        pillArea_ = header.removeFromRight (190).withSizeKeepingCentre (190, 34);
+        titleArea_ = header.removeFromTop (36);
+        subtitleArea_ = header;
+        area.removeFromTop (22);
 
-        auto buttons = area.removeFromBottom (32);
-        toggle_.setBounds (buttons.removeFromLeft (190));
-        buttons.removeFromLeft (8);
-        scanButton_.setBounds (buttons.removeFromLeft (140));
-        buttons.removeFromLeft (8);
-        logsButton_.setBounds (buttons.removeFromLeft (170));
-        area.removeFromBottom (12);
-        table_.setBounds (area);
+        auto cardsRow = area.removeFromTop (112);
+        const int gap = 16;
+        const int cardW = (cardsRow.getWidth() - 2 * gap) / 3;
+        for (int i = 0; i < 3; ++i)
+        {
+            cards_[i] = cardsRow.removeFromLeft (cardW);
+            cardsRow.removeFromLeft (gap);
+        }
+        area.removeFromTop (18);
+
+        auto footer = area.removeFromBottom (40);
+        toggle_.setBounds (footer.removeFromLeft (210));
+        footer.removeFromLeft (10);
+        scan_.setBounds (footer.removeFromLeft (160));
+        footer.removeFromLeft (10);
+        logs_.setBounds (footer.removeFromLeft (190));
+        footer.removeFromLeft (12);
+        logsTextArea_ = footer;
+        area.removeFromBottom (18);
+
+        devicesCard_ = area;
+        auto inner = area.reduced (1);
+        devicesTitle_ = inner.removeFromTop (48).reduced (18, 0);
+        table_.setBounds (inner.reduced (8, 0).withTrimmedBottom (8));
     }
 
 private:
     int getNumRows() override { return static_cast<int> (rows_.size()); }
 
-    void paintRowBackground (juce::Graphics& g, int row, int, int, bool selected) override
+    void paintRowBackground (juce::Graphics& g, int row, int width, int height, bool selected) override
     {
-        g.fillAll (selected ? theme::accent.withAlpha (0.35f) : (row % 2 == 0 ? theme::surface : theme::surfaceAlt));
+        if (selected)
+            g.fillAll (theme::accentSoft);
+        else if (row % 2 == 1)
+            g.fillAll (theme::surfaceRaised.withAlpha (0.5f));
+        g.setColour (theme::outline.withAlpha (0.5f));
+        g.fillRect (0, height - 1, width, 1);
     }
 
     void paintCell (juce::Graphics& g, int row, int column, int width, int height, bool) override
@@ -191,35 +231,59 @@ private:
         if (row < 0 || row >= static_cast<int> (rows_.size()))
             return;
         const auto& e = rows_[static_cast<size_t> (row)];
-        juce::String text;
+        const auto cell = juce::Rectangle<int> (width, height).reduced (10, 0);
+
+        if (column == 4)
+        {
+            const bool blocked = e.exclusive == "blocked", allowed = e.exclusive == "allowed";
+            const auto colour = blocked ? theme::ok : allowed ? theme::danger : theme::warning;
+            const auto label = blocked ? juce::String ("Bloqueado") : allowed ? juce::String ("Permitido") : juce::String ("Desconhecido");
+            theme::paintPill (g, cell.toFloat().withSizeKeepingCentre ((float) cell.getWidth(), 22.0f).withWidth (118.0f), colour, label);
+            return;
+        }
+
+        juce::String value;
         auto colour = theme::text;
+        auto f = theme::font (14.0f);
         switch (column)
         {
-            case 1: text = e.name + (e.isDefault ? utf8 ("  (padrão)") : juce::String()); break;
-            case 2: text = flowText (e.flow); break;
+            case 1:
+                value = e.name;
+                f = theme::font (14.0f, e.isDefault);
+                break;
+            case 2: value = flowText (e.flow); colour = theme::textDim; break;
             case 3:
-                text = stateText (e.state);
-                colour = e.state == EndpointState::active ? theme::text : theme::textDim;
+                value = stateText (e.state);
+                colour = e.state == EndpointState::active ? theme::text : theme::textFaint;
                 break;
-            case 4:
-                text = exclusiveText (e.exclusive);
-                colour = e.exclusive == "blocked" ? theme::ok : e.exclusive == "allowed" ? theme::danger : theme::warning;
-                break;
-            case 5: text = e.format; break;
+            case 5: value = e.format.isNotEmpty() ? e.format : juce::String (utf8 ("—")); colour = theme::textDim; break;
             default: break;
         }
         g.setColour (colour);
-        g.setFont (juce::FontOptions (14.0f));
-        g.drawText (text, 6, 0, width - 8, height, juce::Justification::centredLeft, true);
+        g.setFont (f);
+        g.drawText (value, cell, juce::Justification::centredLeft, true);
+        if (column == 1 && e.isDefault)
+        {
+            const float nameW = juce::GlyphArrangement::getStringWidth (f, value);
+            const auto badge = juce::Rectangle<float> (juce::jmin ((float) cell.getX() + nameW + 10.0f, (float) cell.getRight() - 52.0f),
+                                                       (float) height * 0.5f - 9.0f, 52.0f, 18.0f);
+            g.setColour (theme::accentSoft);
+            g.fillRoundedRectangle (badge, 9.0f);
+            g.setColour (theme::cyan);
+            g.setFont (theme::font (11.0f, true));
+            g.drawText (utf8 ("PADRÃO"), badge, juce::Justification::centred, false);
+        }
     }
 
     Actions actions_;
     juce::Image logo_;
-    juce::Label title_, subtitle_, state_, exclusive_, format_, mode_, scan_, totals_, logs_;
     juce::TableListBox table_;
-    juce::TextButton toggle_ { "Pausar monitoramento" }, scanButton_ { "Verificar agora" },
-        logsButton_ { "Abrir pasta de logs" };
+    juce::TextButton toggle_ { "Pausar monitoramento" }, scan_ { "Verificar agora" }, logs_ { "Abrir pasta de logs" };
     std::vector<EndpointStatus> rows_;
+    Card exclusive_, format_, activity_;
+    juce::String stateText_, modeText_, logsDir_;
+    juce::Colour stateColour_ = theme::textDim;
+    juce::Rectangle<int> logoArea_, titleArea_, subtitleArea_, pillArea_, cards_[3], devicesCard_, devicesTitle_, logsTextArea_;
     bool paused_ = false;
 };
 
@@ -227,11 +291,13 @@ StatusWindow::StatusWindow (Actions actions, std::function<void()> onClose)
     : juce::DocumentWindow ("Audioslave", theme::background, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
       onClose_ (std::move (onClose))
 {
-    setLookAndFeel (&lookAndFeel_);
-    setUsingNativeTitleBar (true);
+    setUsingNativeTitleBar (false);
+    setTitleBarHeight (40);
+    setTitleBarTextCentred (false);
+    setDropShadowEnabled (true);
     setContentOwned (new Content (std::move (actions)), true);
-    setResizable (true, false);
-    setResizeLimits (640, 460, 1600, 1200);
+    setResizable (true, true);
+    setResizeLimits (760, 560, 1800, 1300);
     setIcon (TrayIcon::logoImage (false, 32));
     centreWithSize (getWidth(), getHeight());
 }
@@ -239,7 +305,6 @@ StatusWindow::StatusWindow (Actions actions, std::function<void()> onClose)
 StatusWindow::~StatusWindow()
 {
     clearContentComponent();
-    setLookAndFeel (nullptr);
 }
 
 void StatusWindow::update (const TrayController& controller)
@@ -252,5 +317,15 @@ void StatusWindow::closeButtonPressed()
 {
     if (onClose_)
         onClose_();
+}
+
+bool StatusWindow::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey)
+    {
+        closeButtonPressed();
+        return true;
+    }
+    return juce::DocumentWindow::keyPressed (key);
 }
 } // namespace audioslave
