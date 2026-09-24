@@ -1,0 +1,12 @@
+#pragma code_page(65001)
+#include <windows.h>
+#include "AudioslaveVersion.h"
+#include "resource.h"
+
+IDI_APP ICON "logo.ico"
+IDI_APP_PAUSED ICON "logo-paused.ico"
+
+#define AS_FILE_DESCRIPTION "Audioslave"
+#define AS_INTERNAL_NAME "Audioslave"
+#define AS_ORIGINAL_FILENAME "Audioslave.exe"
+#include "VersionInfo.rc.inc"
