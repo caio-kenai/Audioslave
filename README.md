@@ -5,7 +5,7 @@
 <h1 align="center">Audioslave</h1>
 
 <p align="center">
-  Serviço do Windows feito em <b>JUCE</b> que mantém os dispositivos de áudio fora do <b>modo exclusivo</b><br>
+  Serviço do Windows open source feito em <b>JUCE</b> que mantém os dispositivos de áudio fora do <b>modo exclusivo</b><br>
   e, opcionalmente, padroniza a taxa de amostragem e a profundidade de bits.
 </p>
 
