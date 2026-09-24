@@ -1,7 +1,7 @@
 #pragma once
 // Audioslave's visual language (JUCE LookAndFeel) shared by the tray menu,
-// the status window, the dialogs and the installer: dark navy surfaces from
-// the logo, the logo's blue as the single accent, Segoe UI typography,
+// the status window, the dialogs and the installer: the logo's black
+// surfaces with its orange as the single accent, Segoe UI typography,
 // rounded controls, switch-style toggles and JUCE-drawn window chrome.
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -9,19 +9,19 @@
 namespace audioslave::theme
 {
 // Palette -------------------------------------------------------------------
-inline const juce::Colour background { 0xff0b1426 };   // window
-inline const juce::Colour titleBar { 0xff09101f };
-inline const juce::Colour surface { 0xff111d36 };      // cards
-inline const juce::Colour surfaceRaised { 0xff172645 }; // hover / table stripes
-inline const juce::Colour outline { 0xff22345c };
-inline const juce::Colour outlineStrong { 0xff30487a };
-inline const juce::Colour accent { 0xff2f7cff };       // logo blue
-inline const juce::Colour accentHover { 0xff4b8fff };
-inline const juce::Colour accentSoft { 0x332f7cff };
-inline const juce::Colour cyan { 0xff4fc3ff };         // logo sound waves
-inline const juce::Colour text { 0xffeef3ff };
-inline const juce::Colour textDim { 0xff93a4c8 };
-inline const juce::Colour textFaint { 0xff5f7196 };
+inline const juce::Colour background { 0xff0d0d0f };    // window (logo black)
+inline const juce::Colour titleBar { 0xff09090b };
+inline const juce::Colour surface { 0xff16161a };       // cards
+inline const juce::Colour surfaceRaised { 0xff1f1f24 }; // hover / table stripes
+inline const juce::Colour outline { 0xff2b2b31 };
+inline const juce::Colour outlineStrong { 0xff3b3b43 };
+inline const juce::Colour accent { 0xfffe6902 };        // logo orange
+inline const juce::Colour accentHover { 0xffff7f24 };
+inline const juce::Colour accentSoft { 0x33fe6902 };
+inline const juce::Colour accentLight { 0xffffa55c };   // highlights, focus
+inline const juce::Colour text { 0xfff4f4f6 };
+inline const juce::Colour textDim { 0xffa6a6b0 };
+inline const juce::Colour textFaint { 0xff6c6c76 };
 inline const juce::Colour ok { 0xff34d399 };
 inline const juce::Colour warning { 0xfffbbf24 };
 inline const juce::Colour danger { 0xfff87171 };

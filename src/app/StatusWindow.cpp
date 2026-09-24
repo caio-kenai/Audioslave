@@ -55,7 +55,7 @@ class StatusWindow::Content final : public juce::Component, private juce::TableL
 public:
     explicit Content (Actions actions) : actions_ (std::move (actions))
     {
-        logo_ = TrayIcon::logoImage (false, 64);
+        logo_ = TrayIcon::logoImage (false, 256);
 
         auto& header = table_.getHeader();
         header.addColumn (utf8 ("Dispositivo"), 1, 300, 140, -1, juce::TableHeaderComponent::defaultFlags);
@@ -143,6 +143,7 @@ public:
         g.fillAll (theme::background);
 
         // Header: logo, name, version, status pill.
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImage (logo_, logoArea_.toFloat(), juce::RectanglePlacement::centred);
         g.setColour (theme::text);
         g.setFont (theme::font (26.0f, true));
@@ -269,7 +270,7 @@ private:
                                                        (float) height * 0.5f - 9.0f, 52.0f, 18.0f);
             g.setColour (theme::accentSoft);
             g.fillRoundedRectangle (badge, 9.0f);
-            g.setColour (theme::cyan);
+            g.setColour (theme::accentLight);
             g.setFont (theme::font (11.0f, true));
             g.drawText (utf8 ("PADRÃO"), badge, juce::Justification::centred, false);
         }
@@ -298,7 +299,7 @@ StatusWindow::StatusWindow (Actions actions, std::function<void()> onClose)
     setContentOwned (new Content (std::move (actions)), true);
     setResizable (true, true);
     setResizeLimits (760, 560, 1800, 1300);
-    setIcon (TrayIcon::logoImage (false, 32));
+    setIcon (TrayIcon::logoImage (false, 64));
     centreWithSize (getWidth(), getHeight());
 }
 

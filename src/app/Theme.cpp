@@ -201,7 +201,7 @@ LookAndFeel::LookAndFeel()
     setColour (juce::TextEditor::focusedOutlineColourId, accent);
     setColour (juce::TextEditor::textColourId, text);
     setColour (juce::TextEditor::highlightColourId, accent.withAlpha (0.4f));
-    setColour (juce::CaretComponent::caretColourId, cyan);
+    setColour (juce::CaretComponent::caretColourId, accentLight);
     setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
     setColour (juce::ListBox::outlineColourId, juce::Colours::transparentBlack);
     setColour (juce::TableHeaderComponent::backgroundColourId, surface);
@@ -258,7 +258,7 @@ void LookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button,
 
     if (button.hasKeyboardFocus (true) && enabled)
     {
-        g.setColour (cyan.withAlpha (0.6f));
+        g.setColour (accentLight.withAlpha (0.6f));
         g.drawRoundedRectangle (bounds.reduced (1.5f), radius - 1.5f, 1.2f);
     }
 }
@@ -560,7 +560,7 @@ void LookAndFeel::drawProgressBar (juce::Graphics& g, juce::ProgressBar&, int wi
     if (progress >= 0.0 && progress <= 1.0)
     {
         const auto bar = track.withWidth (juce::jmax ((float) height, track.getWidth() * (float) progress));
-        g.setGradientFill (juce::ColourGradient (accent, bar.getX(), 0.0f, cyan, bar.getRight(), 0.0f, false));
+        g.setGradientFill (juce::ColourGradient (accent, bar.getX(), 0.0f, accentLight, bar.getRight(), 0.0f, false));
         g.fillRoundedRectangle (bar, (float) height * 0.5f);
     }
 }

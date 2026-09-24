@@ -15,7 +15,7 @@ public:
     MenuHeader (juce::String status, juce::Colour colour)
         : juce::PopupMenu::CustomComponent (true), status_ (std::move (status)), colour_ (colour)
     {
-        logo_ = TrayIcon::logoImage (false, 40);
+        logo_ = TrayIcon::logoImage (false, 128);
     }
 
     void getIdealSize (int& width, int& height) override
@@ -32,6 +32,7 @@ public:
             g.fillRoundedRectangle (getLocalBounds().reduced (5, 2).toFloat(), 6.0f);
         }
         auto r = getLocalBounds().reduced (14, 10).toFloat();
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImage (logo_, r.removeFromLeft (42.0f).withSizeKeepingCentre (42.0f, 42.0f), juce::RectanglePlacement::centred);
         r.removeFromLeft (12.0f);
         g.setColour (theme::text);
@@ -56,7 +57,7 @@ juce::Colour trayStateColour (TrayController::UiState s)
         case TrayController::UiState::running:  return theme::ok;
         case TrayController::UiState::paused:   return theme::warning;
         case TrayController::UiState::starting:
-        case TrayController::UiState::stopping: return theme::cyan;
+        case TrayController::UiState::stopping: return theme::accentLight;
         default:                                return theme::danger;
     }
 }

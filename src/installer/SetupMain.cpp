@@ -25,7 +25,7 @@ public:
         setDropShadowEnabled (true);
         wizard_ = new SetupWizard (std::move (options), std::move (onFinished));
         setContentOwned (wizard_, true);
-        setIcon (juce::ImageCache::getFromMemory (AudioslaveAssets::normal32_png, AudioslaveAssets::normal32_pngSize));
+        setIcon (juce::ImageCache::getFromMemory (AudioslaveAssets::normal64_png, AudioslaveAssets::normal64_pngSize));
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }
