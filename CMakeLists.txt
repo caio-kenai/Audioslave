@@ -180,6 +180,21 @@ target_link_libraries(audioslave_core
 target_compile_features(audioslave_core PUBLIC cxx_std_20)
 set_target_properties(audioslave_core PROPERTIES FOLDER "Audioslave")
 
+# Ninja does not see what rc.exe includes: rebuild a target's resources when
+# the version, the icons, the shared VERSIONINFO or its own .rc change
+# (otherwise a version bump or a new logo can ship with stale resources).
+set(AUDIOSLAVE_RC_DEPENDS
+    "${AUDIOSLAVE_GENERATED_DIR}/AudioslaveVersion.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/VersionInfo.rc.inc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/resource.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/logo.ico"
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/logo-paused.ico")
+function(audioslave_resource_depends target rcFile)
+    get_target_property(_generated ${target} JUCE_GENERATED_SOURCES_DIRECTORY)
+    set_source_files_properties("${_generated}/${target}_resources.rc" PROPERTIES
+        OBJECT_DEPENDS "${AUDIOSLAVE_RC_DEPENDS};${CMAKE_CURRENT_SOURCE_DIR}/resources/${rcFile};${ARGN}")
+endfunction()
+
 function(audioslave_configure_executable target)
     target_link_libraries(${target} PRIVATE audioslave_core)
     target_include_directories(${target} PRIVATE resources "${AUDIOSLAVE_GENERATED_DIR}")
@@ -236,6 +251,7 @@ target_sources(Audioslave PRIVATE
 target_compile_definitions(Audioslave PRIVATE JUCE_USER_DEFINED_RC_FILE="Audioslave.rc")
 target_link_libraries(Audioslave PRIVATE AudioslaveAssets)
 audioslave_configure_executable(Audioslave)
+audioslave_resource_depends(Audioslave Audioslave.rc)
 
 # ---------------------------------------------------------------------------
 # Tests (juce::UnitTest)
@@ -269,6 +285,7 @@ target_sources(audioslave_tests PRIVATE
 target_compile_definitions(audioslave_tests PRIVATE JUCE_USER_DEFINED_RC_FILE="AudioslaveTests.rc")
 target_include_directories(audioslave_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 audioslave_configure_executable(audioslave_tests)
+audioslave_resource_depends(audioslave_tests AudioslaveTests.rc)
 add_test(NAME audioslave_tests COMMAND audioslave_tests)
 
 # ---------------------------------------------------------------------------
@@ -306,9 +323,7 @@ audioslave_configure_executable(AudioslaveSetup)
 # The setup embeds Audioslave.exe: build it first and re-run rc.exe when it changes.
 add_dependencies(AudioslaveSetup Audioslave)
 add_dependencies(AudioslaveSetup_rc_lib Audioslave)
-get_target_property(_setup_generated AudioslaveSetup JUCE_GENERATED_SOURCES_DIRECTORY)
-set_source_files_properties("${_setup_generated}/AudioslaveSetup_resources.rc" PROPERTIES
-    OBJECT_DEPENDS "${AUDIOSLAVE_BIN_DIR}/Audioslave.exe")
+audioslave_resource_depends(AudioslaveSetup AudioslaveSetup.rc "${AUDIOSLAVE_BIN_DIR}/Audioslave.exe")
 
 # ---------------------------------------------------------------------------
 # audioslave_screenshots (development only, not built by default): renders
