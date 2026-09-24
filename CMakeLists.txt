@@ -12,7 +12,7 @@ endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(Audioslave
-    VERSION 2.0.0
+    VERSION 1.0.0
     DESCRIPTION "Monitors Windows audio devices and prevents applications from using exclusive audio mode"
     HOMEPAGE_URL "https://github.com/caio-kenai/Audioslave"
     LANGUAGES C CXX RC)
