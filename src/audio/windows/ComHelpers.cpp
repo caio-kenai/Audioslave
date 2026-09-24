@@ -57,4 +57,21 @@ HRESULT getFriendlyName (IMMDevice* device, juce::String& out)
     out = "(unnamed)";
     return FAILED (hr) ? hr : E_FAIL;
 }
+
+HRESULT getDeviceDescription (IMMDevice* device, juce::String& out)
+{
+    out = {};
+    juce::ComSmartPtr<IPropertyStore> store;
+    HRESULT hr = device->OpenPropertyStore (STGM_READ, store.resetAndGetPointerAddress());
+    if (FAILED (hr))
+        return hr;
+    PropVariant value;
+    hr = store->GetValue (PKEY_Device_DeviceDesc, value.put());
+    if (SUCCEEDED (hr) && value.get().vt == VT_LPWSTR && value.get().pwszVal != nullptr)
+    {
+        out = juce::String (value.get().pwszVal);
+        return S_OK;
+    }
+    return FAILED (hr) ? hr : E_FAIL;
+}
 } // namespace audioslave::win

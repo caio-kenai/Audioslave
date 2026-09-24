@@ -15,8 +15,9 @@ class IAudioEndpointEnumerator
 public:
     virtual ~IAudioEndpointEnumerator() = default;
 
-    // Active and unplugged render + capture endpoints. result::notFound when
-    // there are none (not an error: e.g. a server without audio hardware).
+    // Active, unplugged and disabled render + capture endpoints.
+    // result::notFound when there are none (not an error: e.g. a server
+    // without audio hardware).
     virtual ResultCode enumerate (std::vector<AudioEndpoint>& out) = 0;
 };
 
@@ -28,6 +29,22 @@ public:
 
     virtual ResultCode read (const juce::String& endpointId, bool& allow, bool& priority) = 0;
     virtual ResultCode write (const juce::String& endpointId, bool allow, bool priority) = 0;
+};
+
+// Endpoint administration: enable / disable (what the Sound panel's
+// "Disable" does) and the endpoint's name.
+class IEndpointAdmin
+{
+public:
+    virtual ~IEndpointAdmin() = default;
+
+    virtual ResultCode setEnabled (const juce::String& endpointId, bool enabled) = 0;
+    virtual ResultCode getState (const juce::String& endpointId, EndpointState& out) = 0;
+
+    // The editable part of the name (PKEY_Device_DeviceDesc, "Speakers" in
+    // "Speakers (Realtek Audio)"), like renaming it in the Sound panel.
+    virtual ResultCode getDescription (const juce::String& endpointId, juce::String& out) = 0;
+    virtual ResultCode setDescription (const juce::String& endpointId, const juce::String& description) = 0;
 };
 
 // Per-endpoint shared-mode default format.

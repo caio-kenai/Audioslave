@@ -38,6 +38,7 @@ struct AudioEndpoint
 {
     juce::String id;            // stable endpoint id, e.g. {0.0.0.00000000}.{guid}
     juce::String name;          // friendly name
+    juce::String description;   // editable part of the name (PKEY_Device_DeviceDesc)
     EndpointFlow flow = EndpointFlow::unknown;
     EndpointState state = EndpointState::notPresent;
     bool isDefault = false;     // default console endpoint for its flow

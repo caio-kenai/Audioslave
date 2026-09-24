@@ -9,10 +9,19 @@
 //   - Triggered scans respect the per-endpoint failure backoff; periodic and
 //     requested full scans retry everything.
 //   - The thread is always stopped cooperatively (never killed).
+//
+// Incompatible-device policy (format standardization on): a device that does
+// not support the chosen format is only reported, or - when the user enabled
+// and confirmed it - disabled (IEndpointAdmin). Audioslave only ever
+// re-enables devices it disabled itself (DeviceStateStore): when they become
+// compatible or the policy is turned off. A device that keeps coming back
+// enabled is disabled again at most maxDisablesPerDay times, never sooner than
+// reapplyCooldownMs after the previous time, so nothing can loop.
 
 #include "audio/AudioInterfaces.h"
 #include "audio/models/DeviceChange.h"
 #include "config/Configuration.h"
+#include "core/DeviceStateStore.h"
 #include "core/EndpointMemory.h"
 #include "core/EngineStatus.h"
 #include "core/ExclusiveModePolicy.h"
@@ -21,7 +30,9 @@
 #include <juce_core/juce_core.h>
 
 #include <atomic>
+#include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 
 namespace audioslave
@@ -48,7 +59,18 @@ public:
         EndpointMemory::Clock clock;
         int debounceMs = 400;
         int enumerationRetryMs = 5000; // retry sooner while the audio stack is not reachable (boot)
+
+        // Enables disabling / re-enabling / renaming devices (null: report only).
+        IEndpointAdmin* admin = nullptr;
+        // Devices disabled by Audioslave (null: kept in memory only).
+        DeviceStateStore* deviceState = nullptr;
+        // Wall clock in ms since 1970 (the disable history); injectable for tests.
+        std::function<juce::int64()> wallClock;
     };
+
+    static constexpr juce::int64 reapplyCooldownMs = 10 * 60 * 1000;
+    static constexpr int maxDisablesPerDay = 3;
+    static constexpr size_t maxEvents = 32;
 
     WatchdogEngine (IAudioEndpointEnumerator& enumerator, IExclusiveModeStore& exclusiveStore,
                     IAudioFormatStore& formatStore, Configuration config, Options options = {});
@@ -76,7 +98,23 @@ public:
     void onDeviceChange (const DeviceChange& change);
 
     // One synchronous pass (also used by the `scan` CLI and by tests).
-    ScanReport scanOnce (ScanKind kind = ScanKind::full);
+    // `interactive`: run for a change the user is applying right now.
+    ScanReport scanOnce (ScanKind kind = ScanKind::full, bool interactive = false);
+
+    // Read-only preview of what `candidate` would do to every device (the
+    // settings screen shows it before anything is applied).
+    std::vector<DeviceReport> analyze (const Configuration& candidate);
+
+    // "Verificar agora": ask every driver for its formats again.
+    void forgetCapabilities();
+
+    // Writes the endpoint's name now (the configuration keeps it enforced).
+    // Returns an error text, empty on success.
+    juce::String renameDevice (const juce::String& endpointId, const juce::String& name);
+
+    // The user re-enabled a device Audioslave had disabled: enable it and
+    // leave it enabled until the configuration changes. Error text or empty.
+    juce::String enableDevice (const juce::String& endpointId);
 
     [[nodiscard]] Configuration getConfig() const;
     // Takes effect on the next pass; forgets backoff and notices.
@@ -96,11 +134,27 @@ private:
     }
     void notice (const juce::String& key, const juce::String& message);
 
+    DeviceStateStore& deviceState() { return options_.deviceState != nullptr ? *options_.deviceState : ownedState_; }
+    juce::int64 now() const { return options_.wallClock ? options_.wallClock() : juce::Time::currentTimeMillis(); }
+    FormatCapabilities capabilitiesFor (const juce::String& endpointId, const AudioFormat& current);
+    void handleIncompatible (const AudioEndpoint& endpoint, const Configuration& cfg, bool enforce, bool interactive,
+                             ScanReport& report, DeviceReport& device);
+    void handleDisabledByAudioslave (const AudioEndpoint& endpoint, const DisabledDeviceRecord& record,
+                                     const Configuration& cfg, bool enforce, bool interactive, ScanReport& report,
+                                     DeviceReport& device);
+    void restoreName (const AudioEndpoint& endpoint, const juce::String& wanted, bool enforce, ScanReport& report,
+                      EndpointStatus& entry);
+    void addEvent (DeviceAction action, const DeviceReport& device, bool interactive);
+
     IAudioEndpointEnumerator& enumerator_;
     ExclusiveModePolicy exclusivePolicy_;
     FormatPolicy formatPolicy_;
     Options options_;
     EndpointMemory memory_;
+    DeviceStateStore ownedState_;
+
+    juce::CriticalSection capabilitiesLock_;
+    std::map<juce::String, FormatCapabilities> capabilities_;
 
     mutable juce::CriticalSection configLock_;
     Configuration config_;
@@ -118,6 +172,8 @@ private:
 
     mutable juce::CriticalSection statusLock_;
     EngineStatus status_;
+    std::deque<DeviceEvent> events_;
+    juce::int64 nextEventSequence_ = 1;
 
     juce::ThreadSafeListenerList<Listener> listeners_;
 };

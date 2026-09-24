@@ -64,6 +64,25 @@ juce::String describeFormatTarget (const Configuration& config)
     return juce::String (config.sampleRate) + " Hz / " + juce::String (config.bitDepth) + "-bit";
 }
 
+juce::String formatTargetKey (const Configuration& config)
+{
+    return juce::String (config.sampleRate) + ":" + juce::String (config.bitDepth);
+}
+
+bool disablePolicyConfirmed (const Configuration& config)
+{
+    return config.formatStandardization && config.disableIncompatibleDevices
+           && config.disableConfirmedFor == formatTargetKey (config);
+}
+
+juce::String customDeviceName (const Configuration& config, const juce::String& endpointId)
+{
+    for (const auto& [id, name] : config.deviceNames)
+        if (id.equalsIgnoreCase (endpointId))
+            return name;
+    return {};
+}
+
 ConfigurationLoadResult parseConfiguration (const juce::String& text)
 {
     ConfigurationLoadResult result;
@@ -92,6 +111,13 @@ ConfigurationLoadResult parseConfiguration (const juce::String& text)
 
         const auto rawKey = line.substring (0, eq).trim();
         auto value = line.substring (eq + 1).trim();
+        if (section == "devicenames")
+        {
+            // Names are free text (';' included); ids are kept as written.
+            if (rawKey.isNotEmpty() && value.isNotEmpty())
+                cfg.deviceNames[rawKey] = value;
+            continue;
+        }
         // Trailing inline comments: "Enforce=true ; comment".
         if (const int sc = value.indexOfChar (';'); sc >= 0)
             value = value.substring (0, sc).trim();
@@ -142,6 +168,10 @@ ConfigurationLoadResult parseConfiguration (const juce::String& text)
                 result.warnings.add ("config: SampleRate=" + value + " is not supported (use " + joinRates()
                                      + "); using " + juce::String (cfg.sampleRate) + ".");
         }
+        else if (key == "features.disableincompatibledevices")
+            readBool (cfg.disableIncompatibleDevices);
+        else if (key == "features.disableconfirmedfor")
+            cfg.disableConfirmedFor = value;
         else if (key == "features.bitdepth")
         {
             if (parseUnsigned (value, n) && isSupportedBitDepth (n))
@@ -187,6 +217,10 @@ juce::Result saveConfiguration (const Configuration& cfg, const juce::File& file
         << "SampleRate=" << juce::String (cfg.sampleRate) << nl
         << "; " << joinDepths().replace (", ", " | ") << nl
         << "BitDepth=" << juce::String (cfg.bitDepth) << nl
+        << "; Disable the devices that do not support SampleRate/BitDepth (false = only report them)." << nl
+        << "DisableIncompatibleDevices=" << (cfg.disableIncompatibleDevices ? "true" : "false") << nl
+        << "; Written when the user confirms the policy for a format (rate:bits); do not edit." << nl
+        << "DisableConfirmedFor=" << cfg.disableConfirmedFor << nl
         << nl
         << "[Monitor]" << nl
         << "Playback=" << (cfg.monitorPlayback ? "true" : "false") << nl
@@ -202,6 +236,14 @@ juce::Result saveConfiguration (const Configuration& cfg, const juce::File& file
         << "[Behavior]" << nl
         << "; false = report only, never modify any device." << nl
         << "Enforce=" << (cfg.enforce ? "true" : "false") << nl;
+
+    if (! cfg.deviceNames.empty())
+    {
+        out << nl << "[DeviceNames]" << nl
+            << "; Names chosen in Audioslave (endpoint id = name); restored if Windows or a driver resets them." << nl;
+        for (const auto& [id, name] : cfg.deviceNames)
+            out << id << "=" << name.replaceCharacters ("\r\n", "  ").trim() << nl;
+    }
 
     if (auto dir = file.getParentDirectory(); ! dir.isDirectory())
         if (auto created = dir.createDirectory(); created.failed())

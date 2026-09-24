@@ -63,8 +63,9 @@ public:
             const auto out = policy.judgeAndApply ("d", 48000, 24, true);
             expect (out.result == FormatResult::unsupported);
             expectEquals (store.writeCalls.load(), 0);
-            expect (out.supported.contains ("44100 Hz / 16-bit"));
-            expect (out.supported.contains ("48000 Hz / 16-bit"));
+            const auto supported = policy.describeSupported ("d", out.before);
+            expect (supported.contains ("44100 Hz / 16-bit"));
+            expect (supported.contains ("48000 Hz / 16-bit"));
         }
 
         beginTest ("Unknown when support cannot be determined");

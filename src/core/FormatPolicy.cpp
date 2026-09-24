@@ -131,8 +131,8 @@ FormatOutcome FormatPolicy::judgeAndApply (const juce::String& endpointId, std::
     }
     if (! chosen)
     {
+        // What it does support comes from probe() (cached by the engine).
         out.result = FormatResult::unsupported;
-        out.supported = describeSupported (endpointId, out.before);
         return out;
     }
 

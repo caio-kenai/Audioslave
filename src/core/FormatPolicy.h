@@ -30,7 +30,6 @@ struct FormatOutcome
     AudioFormat before;          // format found on the device
     AudioFormat applied;         // layout written (applied / writeFailed / verifyFailed)
     ResultCode code = result::ok; // failure detail (unknown / writeFailed)
-    juce::String supported;      // "44100 Hz / 16-bit, 48000 Hz / 24-bit" (unsupported)
 };
 
 class FormatPolicy

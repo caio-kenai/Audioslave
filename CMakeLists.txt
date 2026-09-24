@@ -138,6 +138,9 @@ add_library(audioslave_core STATIC
     src/audio/windows/WindowsFormatSupport.cpp
     src/audio/windows/WindowsAudioFormatPolicy.h
     src/audio/windows/WindowsAudioFormatPolicy.cpp
+    src/audio/windows/PolicyConfig.h
+    src/audio/windows/WindowsEndpointAdmin.h
+    src/audio/windows/WindowsEndpointAdmin.cpp
     src/audio/juce/JuceAudioDeviceInventory.h
     src/audio/juce/JuceAudioDeviceInventory.cpp
     src/audio/juce/JuceExclusiveModeProbe.h
@@ -148,6 +151,8 @@ add_library(audioslave_core STATIC
     src/core/FormatPolicy.cpp
     src/core/FormatCompatibility.h
     src/core/FormatCompatibility.cpp
+    src/core/DeviceStateStore.h
+    src/core/DeviceStateStore.cpp
     src/core/EndpointMemory.h
     src/core/EndpointMemory.cpp
     src/core/EngineStatus.h
@@ -244,6 +249,7 @@ target_sources(audioslave_tests PRIVATE
     tests/ExclusiveModePolicyTests.cpp
     tests/FormatPolicyTests.cpp
     tests/FormatCompatibilityTests.cpp
+    tests/DevicePolicyTests.cpp
     tests/EndpointMemoryTests.cpp
     tests/WatchdogEngineTests.cpp
     tests/ProtocolTests.cpp

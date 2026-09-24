@@ -13,4 +13,6 @@ HRESULT openDevice (const juce::String& endpointId, juce::ComSmartPtr<IMMDevice>
 HRESULT openDevice (IMMDeviceEnumerator* enumerator, const juce::String& endpointId, juce::ComSmartPtr<IMMDevice>& out);
 HRESULT getDeviceId (IMMDevice* device, juce::String& out);
 HRESULT getFriendlyName (IMMDevice* device, juce::String& out);
+// PKEY_Device_DeviceDesc: the editable part of the name ("Speakers").
+HRESULT getDeviceDescription (IMMDevice* device, juce::String& out);
 } // namespace audioslave::win

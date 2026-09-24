@@ -1,6 +1,7 @@
 #include "platform/windows/WinCommon.h"
 #include "audio/windows/WindowsAudioFormatPolicy.h"
 #include "audio/windows/ComHelpers.h"
+#include "audio/windows/PolicyConfig.h"
 #include "audio/windows/WindowsFormatSupport.h"
 #include "platform/windows/WinHandles.h"
 
@@ -15,23 +16,6 @@ namespace
 // PKEY_AudioEngine_DeviceFormat {f19f064d-082c-4e27-bc73-6882a1bb8e4c},0
 constexpr PROPERTYKEY deviceFormatKey = {
     { 0xf19f064d, 0x082c, 0x4e27, { 0xbc, 0x73, 0x68, 0x82, 0xa1, 0xbb, 0x8e, 0x4c } }, 0
-};
-
-// IPolicyConfig (Windows 7 .. 11). Only the methods up to SetDeviceFormat
-// are declared; the vtable order is what matters.
-MIDL_INTERFACE ("f8679f50-850a-41cf-9c72-430f290290c8")
-IPolicyConfig : public IUnknown
-{
-public:
-    virtual HRESULT STDMETHODCALLTYPE GetMixFormat (PCWSTR, WAVEFORMATEX**) = 0;
-    virtual HRESULT STDMETHODCALLTYPE GetDeviceFormat (PCWSTR, INT, WAVEFORMATEX**) = 0;
-    virtual HRESULT STDMETHODCALLTYPE ResetDeviceFormat (PCWSTR) = 0;
-    virtual HRESULT STDMETHODCALLTYPE SetDeviceFormat (PCWSTR, WAVEFORMATEX*, WAVEFORMATEX*) = 0;
-};
-
-// CLSID_CPolicyConfigClient {870af99c-171d-4f9e-af0d-e63df40c2bc9}
-constexpr CLSID policyConfigClientClsid = {
-    0x870af99c, 0x171d, 0x4f9e, { 0xaf, 0x0d, 0xe6, 0x3d, 0xf4, 0x0c, 0x2b, 0xc9 }
 };
 } // namespace
 

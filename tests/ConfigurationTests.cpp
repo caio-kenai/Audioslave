@@ -40,6 +40,10 @@ public:
             in.formatStandardization = true;
             in.sampleRate = 96000;
             in.bitDepth = 16;
+            in.disableIncompatibleDevices = true;
+            in.disableConfirmedFor = "96000:16";
+            in.deviceNames["{0.0.0.00000000}.{a1}"] = juce::String::fromUTF8 ("Monitor Estúdio; sala = 2");
+            in.deviceNames["{0.0.1.00000000}.{b2}"] = "Mic";
             expect (saveConfiguration (in, file).wasOk());
             const auto out = loadConfiguration (file, false);
             expect (out.fileFound);
@@ -155,6 +159,36 @@ public:
             expectEquals (static_cast<int> (r.config.bitDepth), 16);
             expect (! r.config.monitorCapture);
             expect (r.config.logLevel == LogLevel::warn);
+        }
+
+        beginTest ("The disable policy is off by default and needs a confirmation for the current format");
+        {
+            Configuration cfg;
+            expect (! cfg.disableIncompatibleDevices);
+            expect (! disablePolicyConfirmed (cfg));
+            cfg.formatStandardization = true;
+            cfg.disableIncompatibleDevices = true;
+            expect (! disablePolicyConfirmed (cfg));
+            cfg.disableConfirmedFor = formatTargetKey (cfg);
+            expectEquals (cfg.disableConfirmedFor, juce::String ("48000:24"));
+            expect (disablePolicyConfirmed (cfg));
+            cfg.bitDepth = 16; // another format: the old confirmation does not count
+            expect (! disablePolicyConfirmed (cfg));
+            cfg.bitDepth = 24;
+            cfg.formatStandardization = false;
+            expect (! disablePolicyConfirmed (cfg));
+
+            const auto r = parse ("[Features]\nDisableIncompatibleDevices=true\nDisableConfirmedFor=44100:16\n");
+            expect (r.config.disableIncompatibleDevices);
+            expectEquals (r.config.disableConfirmedFor, juce::String ("44100:16"));
+        }
+
+        beginTest ("Kept device names: free text, ids matched without regard to case");
+        {
+            const auto r = parse ("[DeviceNames]\n{0.0.0.00000000}.{AbC}=Caixas ; da sala = 2\n\n[Monitor]\nPlayback=true\n");
+            expect (r.warnings.isEmpty());
+            expectEquals (customDeviceName (r.config, "{0.0.0.00000000}.{abc}"), juce::String ("Caixas ; da sala = 2"));
+            expect (customDeviceName (r.config, "{other}").isEmpty());
         }
 
         beginTest ("Format target description");

@@ -98,7 +98,9 @@ public:
     };
 
     std::map<juce::String, AudioFormat> current;
-    std::vector<Layout> supported;
+    std::vector<Layout> supported;                        // every device...
+    std::map<juce::String, std::vector<Layout>> supportedBy; // ...unless listed here
+    std::atomic<int> supportCalls { 0 };
     ResultCode readResult = result::ok;
     ResultCode supportResult = result::ok;
     ResultCode writeResult = result::ok;
@@ -117,12 +119,14 @@ public:
         return result::ok;
     }
 
-    ResultCode isFormatSupported (const juce::String&, const AudioFormat& f, bool& ok) override
+    ResultCode isFormatSupported (const juce::String& id, const AudioFormat& f, bool& ok) override
     {
+        ++supportCalls;
         ok = false;
         if (failed (supportResult))
             return supportResult;
-        for (const auto& l : supported)
+        const auto it = supportedBy.find (id);
+        for (const auto& l : it != supportedBy.end() ? it->second : supported)
             if (l.rate == f.sampleRate && l.valid == f.validBits && l.container == f.containerBits && l.isFloat == f.isFloat)
                 ok = true;
         return result::ok;
@@ -138,6 +142,81 @@ public:
             current[id] = f;
         return result::ok;
     }
+};
+
+// Enable / disable and names, mirrored into a MockEnumerator's endpoints (a
+// disabled endpoint shows up as DEVICE_STATE_DISABLED on the next pass).
+class MockEndpointAdmin : public IEndpointAdmin
+{
+public:
+    explicit MockEndpointAdmin (MockEnumerator& enumerator) : enumerator_ (enumerator) {}
+
+    ResultCode setResult = result::ok;
+    bool changesStick = true;
+    std::atomic<int> disableCalls { 0 }, enableCalls { 0 }, renameCalls { 0 };
+
+    ResultCode setEnabled (const juce::String& id, bool enabled) override
+    {
+        ++(enabled ? enableCalls : disableCalls);
+        if (failed (setResult))
+            return setResult;
+        if (changesStick)
+            if (auto* e = find (id))
+                e->state = enabled ? EndpointState::active : EndpointState::disabled;
+        return result::ok;
+    }
+
+    ResultCode getState (const juce::String& id, EndpointState& out) override
+    {
+        if (auto* e = find (id))
+        {
+            out = e->state;
+            return result::ok;
+        }
+        return result::notFound;
+    }
+
+    ResultCode getDescription (const juce::String& id, juce::String& out) override
+    {
+        if (auto* e = find (id))
+        {
+            out = e->description;
+            return result::ok;
+        }
+        return result::notFound;
+    }
+
+    ResultCode setDescription (const juce::String& id, const juce::String& text) override
+    {
+        ++renameCalls;
+        if (failed (setResult))
+            return setResult;
+        if (auto* e = find (id))
+        {
+            e->description = text;
+            e->name = text + " (Mock Audio)";
+            return result::ok;
+        }
+        return result::notFound;
+    }
+
+    // Windows / the driver re-creates the endpoint enabled.
+    void reappear (const juce::String& id)
+    {
+        if (auto* e = find (id))
+            e->state = EndpointState::active;
+    }
+
+private:
+    AudioEndpoint* find (const juce::String& id)
+    {
+        for (auto& e : enumerator_.endpoints)
+            if (e.id == id)
+                return &e;
+        return nullptr;
+    }
+
+    MockEnumerator& enumerator_;
 };
 
 // Unique names for pipes / temp files so parallel runs never collide.

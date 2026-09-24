@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 
 namespace audioslave
 {
@@ -45,6 +46,16 @@ struct Configuration
     bool formatStandardization = false;
     std::uint32_t sampleRate = defaultSampleRate;
     std::uint16_t bitDepth = defaultBitDepth;
+    // Disable the endpoints that cannot use SampleRate/BitDepth (off: they are
+    // only reported and left alone). Opt-in, and never acted on before the
+    // user has confirmed it for the current target: DisableConfirmedFor holds
+    // the confirmed "rate:bits" and is written by the confirmation dialogs.
+    bool disableIncompatibleDevices = false;
+    juce::String disableConfirmedFor;
+
+    // [DeviceNames] endpoint id -> name chosen by the user, re-applied when a
+    // driver or Windows update resets it.
+    std::map<juce::String, juce::String> deviceNames;
 
     bool operator== (const Configuration&) const = default;
 };
@@ -68,4 +79,14 @@ juce::Result saveConfiguration (const Configuration& config, const juce::File& f
 
 // "48000 Hz / 24-bit"
 juce::String describeFormatTarget (const Configuration& config);
+
+// "48000:24": the value DisableConfirmedFor must hold for the current target.
+juce::String formatTargetKey (const Configuration& config);
+
+// True when incompatible devices may really be disabled: the option is on,
+// format standardization is on and the user confirmed this target.
+bool disablePolicyConfirmed (const Configuration& config);
+
+// The name the user chose for an endpoint (case-insensitive id), or empty.
+juce::String customDeviceName (const Configuration& config, const juce::String& endpointId);
 } // namespace audioslave

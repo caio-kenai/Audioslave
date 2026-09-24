@@ -42,7 +42,7 @@ ResultCode WindowsAudioEndpointEnumerator::enumerate (std::vector<AudioEndpoint>
     for (auto flow : { EndpointFlow::render, EndpointFlow::capture })
     {
         juce::ComSmartPtr<IMMDeviceCollection> collection;
-        HRESULT hr = enumerator->EnumAudioEndpoints (toDataFlow (flow), DEVICE_STATE_ACTIVE | DEVICE_STATE_UNPLUGGED,
+        HRESULT hr = enumerator->EnumAudioEndpoints (toDataFlow (flow), DEVICE_STATE_ACTIVE | DEVICE_STATE_UNPLUGGED | DEVICE_STATE_DISABLED,
                                                      collection.resetAndGetPointerAddress());
         UINT count = 0;
         if (SUCCEEDED (hr))
@@ -68,6 +68,7 @@ ResultCode WindowsAudioEndpointEnumerator::enumerate (std::vector<AudioEndpoint>
             DWORD state = 0;
             endpoint.state = SUCCEEDED (device->GetState (&state)) ? toEndpointState (state) : EndpointState::notPresent;
             getFriendlyName (device, endpoint.name);
+            getDeviceDescription (device, endpoint.description);
             endpoint.isDefault = endpoint.id == defaultForFlow;
             out.push_back (std::move (endpoint));
         }
