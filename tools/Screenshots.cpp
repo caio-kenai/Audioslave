@@ -6,6 +6,7 @@
 
 #include "platform/windows/WinCommon.h"
 #include "app/Dialog.h"
+#include "app/SettingsReport.h"
 #include "app/StatusWindow.h"
 #include "app/Theme.h"
 #include "app/TrayController.h"
@@ -21,12 +22,14 @@ namespace
 ipc::StatusSnapshot sampleStatus (EngineState state)
 {
     ipc::StatusSnapshot s;
-    s.version = "1.0.0";
+    s.version = "1.0.1";
     s.mode = "service";
     s.state = state;
     s.exclusiveProtection = true;
     s.formatStandardization = true;
     s.formatTarget = "48000 Hz / 24-bit";
+    s.sampleRate = 48000;
+    s.bitDepth = 24;
     s.hasScanned = true;
     s.lastScanTime = juce::Time::getCurrentTime();
     s.lastScan.endpointsScanned = 9;
@@ -41,16 +44,21 @@ ipc::StatusSnapshot sampleStatus (EngineState state)
         bool isDefault;
         const char* exclusive;
         const char* format;
+        Compatibility compatibility;
+        const char* capabilities;
+        bool disabledByAudioslave;
     };
+    const auto ok = Compatibility::compatible;
+    const auto none = Compatibility::unknown;
     const Row rows[] = {
-        { "Speakers / Headphones (Realtek Audio)", EndpointFlow::render, EndpointState::active, true, "blocked", "48000 Hz / 24-bit" },
-        { "Speakers 01 (ASIOVADPRO Driver)", EndpointFlow::render, EndpointState::active, false, "blocked", "48000 Hz / 24-bit" },
-        { "Speakers 02 (ASIOVADPRO Driver)", EndpointFlow::render, EndpointState::active, false, "blocked", "48000 Hz / 24-bit" },
-        { "Fones de ouvido (JBL Tune 520BT)", EndpointFlow::render, EndpointState::unplugged, false, "blocked", "" },
-        { "Microphone (Realtek Audio)", EndpointFlow::capture, EndpointState::active, true, "blocked", "48000 Hz / 24-bit" },
-        { "Webcam 1 (NDI Webcam Audio)", EndpointFlow::capture, EndpointState::active, false, "blocked", "44100 Hz / 16-bit" },
-        { "Mix 01 (ASIOVADPRO Driver)", EndpointFlow::capture, EndpointState::active, false, "allowed", "48000 Hz / 24-bit" },
-        { "Headset (QCY H2 Pro)", EndpointFlow::capture, EndpointState::unplugged, false, "blocked", "" },
+        { "Speakers / Headphones (Realtek Audio)", EndpointFlow::render, EndpointState::active, true, "blocked", "48000 Hz / 24-bit", ok, "48000:16/24", false },
+        { "Monitor Estúdio (ASIOVADPRO Driver)", EndpointFlow::render, EndpointState::active, false, "blocked", "48000 Hz / 24-bit", ok, "44100:16/24/32;48000:16/24/32", false },
+        { "HDMI (Intel Display Audio)", EndpointFlow::render, EndpointState::disabled, false, "blocked", "", Compatibility::rateUnsupported, "44100:16", true },
+        { "Fones de ouvido (JBL Tune 520BT)", EndpointFlow::render, EndpointState::unplugged, false, "blocked", "", none, "", false },
+        { "Microphone (Realtek Audio)", EndpointFlow::capture, EndpointState::active, true, "blocked", "48000 Hz / 24-bit", ok, "44100:16/24;48000:16/24", false },
+        { "Webcam 1 (NDI Webcam Audio)", EndpointFlow::capture, EndpointState::active, false, "blocked", "48000 Hz / 16-bit", Compatibility::depthUnsupported, "44100:16;48000:16", false },
+        { "Mix 01 (ASIOVADPRO Driver)", EndpointFlow::capture, EndpointState::active, false, "allowed", "48000 Hz / 24-bit", ok, "48000:16/24/32", false },
+        { "Headset (QCY H2 Pro)", EndpointFlow::capture, EndpointState::unplugged, false, "blocked", "", none, "", false },
     };
     for (const auto& r : rows)
     {
@@ -61,6 +69,10 @@ ipc::StatusSnapshot sampleStatus (EngineState state)
         e.isDefault = r.isDefault;
         e.exclusive = r.exclusive;
         e.format = r.format;
+        e.compatibility = r.compatibility;
+        e.capabilities = r.capabilities;
+        e.disabledByAudioslave = r.disabledByAudioslave;
+        e.customName = e.name.startsWith (juce::String::fromUTF8 ("Monitor Estúdio"));
         s.endpoints.push_back (e);
     }
     return s;
@@ -154,6 +166,8 @@ public:
             StatusWindow window ({}, {});
             window.update (controllerFor (EngineState::running));
             save (window.createComponentSnapshot (window.getLocalBounds(), true, 1.5f), out_.getChildFile ("status-window.png"));
+            window.showSettings (true);
+            save (window.createComponentSnapshot (window.getLocalBounds(), true, 1.5f), out_.getChildFile ("settings.png"));
         }
         {
             setup::Options options;
@@ -221,13 +235,72 @@ private:
                 theme::showDialog (std::move (o));
                 break;
             }
+            case 4:
+            case 5:
+            {
+                // The settings preview: bit-depth limit (ignore) and disable confirmation.
+                ipc::AudioSettings settings;
+                settings.formatStandardization = true;
+                settings.disableIncompatibleDevices = step == 5;
+                std::vector<DeviceReport> devices;
+                for (const auto& e : sampleStatus (EngineState::running).endpoints)
+                {
+                    if (e.state == EndpointState::unplugged)
+                        continue;
+                    DeviceReport d;
+                    d.name = e.name;
+                    d.compatibility = e.compatibility;
+                    d.capabilities = FormatCapabilities::deserialise (e.capabilities);
+                    const bool bad = d.compatibility != Compatibility::compatible;
+                    d.action = ! bad ? DeviceAction::apply : step == 5 ? DeviceAction::disable : DeviceAction::ignore;
+                    devices.push_back (d);
+                }
+                const auto p = buildPreview (settings, devices);
+                theme::DialogOptions o;
+                o.icon = p.disablesDevices ? juce::MessageBoxIconType::WarningIcon : juce::MessageBoxIconType::QuestionIcon;
+                o.title = p.title;
+                o.message = p.message;
+                o.buttons = { "Continuar", "Cancelar" };
+                o.destructive = p.disablesDevices;
+                auto details = std::make_unique<juce::TextEditor>();
+                details->setMultiLine (true, true);
+                details->setReadOnly (true);
+                details->setFont (theme::font (13.5f));
+                details->setColour (juce::TextEditor::backgroundColourId, theme::surface);
+                details->setColour (juce::TextEditor::textColourId, theme::textDim);
+                details->setIndents (10, 8);
+                details->setText (p.details, false);
+                details->setSize (100, 240);
+                o.extra = std::move (details);
+                theme::showDialog (std::move (o));
+                break;
+            }
+            case 6:
+            {
+                theme::DialogOptions o;
+                o.icon = juce::MessageBoxIconType::QuestionIcon;
+                o.title = "Renomear dispositivo";
+                o.message = juce::String::fromUTF8 ("O nome é aplicado no Windows e mantido pelo Audioslave, mesmo que uma "
+                                                    "atualização do Windows ou do driver o redefina. O Windows exibe o nome "
+                                                    "seguido do adaptador, por exemplo \"Nome (Realtek Audio)\".");
+                o.buttons = { "Renomear", "Cancelar" };
+                auto editor = std::make_unique<juce::TextEditor>();
+                editor->setFont (theme::font (15.0f));
+                editor->setIndents (10, 8);
+                editor->setText (juce::String::fromUTF8 ("Monitor Estúdio"), false);
+                editor->setSize (100, 38);
+                o.extra = std::move (editor);
+                theme::showDialog (std::move (o));
+                break;
+            }
             default: break;
         }
     }
 
     void timerCallback() override
     {
-        static const char* names[] = { "tray-menu.png", "tray-menu-paused.png", "dialog-exit.png", "dialog-uninstall.png" };
+        static const char* names[] = { "tray-menu.png",       "tray-menu-paused.png",    "dialog-exit.png",  "dialog-uninstall.png",
+                                       "dialog-bit-depth.png", "dialog-disable.png", "dialog-rename.png" };
         auto& desktop = juce::Desktop::getInstance();
         bool captured = false;
         for (int i = 0; i < desktop.getNumComponents(); ++i)
@@ -247,7 +320,7 @@ private:
         if (auto* modal = juce::Component::getCurrentlyModalComponent())
             modal->exitModalState (-1);
 
-        if (++step_ < 4)
+        if (++step_ < 7)
         {
             showStep (step_);
             return;
