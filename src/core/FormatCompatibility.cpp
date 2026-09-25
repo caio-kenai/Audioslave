@@ -144,7 +144,9 @@ juce::String CompatibilityVerdict::reason (std::uint32_t rate, std::uint16_t bit
 CompatibilityVerdict judgeCompatibility (const FormatCapabilities& caps, std::uint32_t rate, std::uint16_t bits)
 {
     CompatibilityVerdict v;
-    if (! caps.known)
+    // No format at all is what a disconnected device reports: unknown, never
+    // a reason to call it incompatible (or to disable it).
+    if (! caps.known || caps.depthsByRate.empty())
         return v;
     if (! caps.supportsRate (rate))
     {

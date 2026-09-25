@@ -107,11 +107,11 @@ public:
             expect (v.compatibility == Compatibility::rateUnsupported);
         }
 
-        beginTest ("Asked but supports none of the standard formats");
+        beginTest ("No format reported at all (disconnected device): unknown, never incompatible");
         {
             FormatCapabilities none;
             none.known = true;
-            expect (judgeCompatibility (none, 48000, 16).compatibility == Compatibility::rateUnsupported);
+            expect (judgeCompatibility (none, 48000, 16).compatibility == Compatibility::unknown);
             expectEquals (none.describeRates(), juce::String ("none of the standard rates"));
         }
 

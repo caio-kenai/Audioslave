@@ -49,7 +49,7 @@ enum class Compatibility
     compatible,
     rateUnsupported,
     depthUnsupported,
-    unknown
+    unknown // not asked, or no format reported at all (e.g. disconnected)
 };
 
 juce::String compatibilityName (Compatibility c); // "compatible", "rate-unsupported", ...
