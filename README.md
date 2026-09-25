@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Versão" src="https://img.shields.io/badge/vers%C3%A3o-1.0.1-fe6902">
+  <img alt="Versão" src="https://img.shields.io/badge/vers%C3%A3o-1.0.2-fe6902">
   <img alt="JUCE 9" src="https://img.shields.io/badge/JUCE-9.0.2-8dc63f">
   <img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599c">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4">
@@ -115,7 +115,8 @@ de amostragem). Janela normal do Windows: minimizar, maximizar/restaurar (també
 no título e *snap layouts*), fechar e redimensionar pelas bordas; posição, tamanho e estado
 maximizado são lembrados por usuário.
 
-No topo ficam **Configurações**, **Pasta de logs**, o estado e **Verificar agora**.
+No topo ficam **Configurações**, o estado e **Verificar agora**; embaixo, **Pausar/Retomar** e
+**Pasta de logs**.
 
 <p>
   <img src="docs/screenshots/device-menu.png" alt="Menu de um dispositivo" width="292">

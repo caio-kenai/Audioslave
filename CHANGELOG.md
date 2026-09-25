@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.2] - 2026-09-24
+
+### Melhorias
+- Janela do Audioslave: **Configurações** (laranja) no topo, ao lado do logo e da versão;
+  **Verificar agora** ao lado do estado, com ícone; **Pasta de logs** embaixo à direita, no lugar
+  do caminho da pasta.
+- Menu de um dispositivo (botão direito) redesenhado: cabeçalho com nome, tipo e estado, largura
+  fixa e ícones; *Renomear* abre um diálogo com o campo já selecionado, Enter confirma, Esc cancela
+  e há uma prévia do nome como o Windows vai exibir.
+
+### Correções
+- Abrir a janela pela bandeja (ou abrir o Audioslave de novo) traz a janela para a frente dos
+  outros aplicativos, inclusive na primeira abertura.
+
 ## [1.0.1] - 2026-09-24
 
 ### Novidades
