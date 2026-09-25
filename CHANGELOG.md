@@ -37,6 +37,9 @@
 - Ícone da bandeja criado pelo Windows diretamente do quadro PNG do tamanho certo, sem perda de
   nitidez, e atualizado quando a escala de DPI muda.
 - A versão nos detalhes do executável acompanha a versão do projeto.
+- Desinstalação silenciosa (`Uninstall.exe /S`) remove tudo, inclusive o próprio desinstalador e
+  a pasta, e só retorna ao terminar.
+- Janela de renomear dispositivo mais compacta.
 
 ## [1.0.0] - 2026-09-24
 
