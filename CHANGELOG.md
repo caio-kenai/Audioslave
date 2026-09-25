@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.3] - 2026-09-24
+
+### Correções
+- **Desabilitar dispositivos incompatíveis funciona como serviço**: um dispositivo incompatível
+  habilitado de novo (painel de Som, Windows ou driver) é desabilitado de novo na hora. Só um
+  loop real (mais de 5 vezes em 10 minutos) espera esse intervalo; *Reativar e manter habilitado*,
+  na janela, continua sendo a forma de deixá-lo habilitado.
+- **Dispositivos desconectados** não são mais considerados: sem formatos visíveis, nunca são
+  tratados como incompatíveis nem desabilitados.
+- O **instalador** agora avisa, com *Continuar* / *Cancelar*, sobre dispositivos limitados pela
+  profundidade de bits ou sem a taxa de amostragem (antes só a tela de Configurações avisava).
+
 ## [1.0.2] - 2026-09-24
 
 ### Melhorias
