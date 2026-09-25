@@ -169,6 +169,10 @@ private:
 
     // Held around each endpoint's inspect-and-fix step and by pause().
     juce::CriticalSection modifyLock_;
+    // One pass at a time: the worker's and one run for the user (settings
+    // applied from the window) must not interleave, or a pass that enumerated
+    // before a device was disabled would take it for "enabled again".
+    juce::CriticalSection scanLock_;
 
     mutable juce::CriticalSection statusLock_;
     EngineStatus status_;

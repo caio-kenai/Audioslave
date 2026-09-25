@@ -369,6 +369,7 @@ ScanReport WatchdogEngine::scanOnce (ScanKind kind, bool interactive)
         return report;
     }
 
+    const juce::ScopedLock scanGuard (scanLock_);
     const auto cfg = getConfig();
     std::vector<AudioEndpoint> endpoints;
     const auto rc = enumerator_.enumerate (endpoints);
@@ -395,6 +396,11 @@ ScanReport WatchdogEngine::scanOnce (ScanKind kind, bool interactive)
         // of Audioslave's business.
         const auto record = deviceState().get (endpoint.id);
         const bool disabledByUs = record.has_value() && record->disabled;
+        // The enumeration is a snapshot: before believing that a device
+        // Audioslave disabled is enabled again, ask Windows now.
+        if (disabledByUs && endpoint.state != EndpointState::disabled && options_.admin != nullptr)
+            if (EndpointState live = endpoint.state; succeeded (options_.admin->getState (endpoint.id, live)))
+                endpoint.state = live;
         if (endpoint.state == EndpointState::disabled && ! disabledByUs)
             continue;
         if (endpoint.state == EndpointState::notPresent)

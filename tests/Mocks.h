@@ -8,6 +8,7 @@
 #include <atomic>
 #include <functional>
 #include <map>
+#include <optional>
 #include <vector>
 
 namespace audioslave::test
@@ -39,12 +40,20 @@ public:
     std::vector<AudioEndpoint> endpoints;
     ResultCode result = result::ok;
     std::atomic<int> calls { 0 };
+    // Returned once instead of `endpoints` (a snapshot taken before a change).
+    std::optional<std::vector<AudioEndpoint>> staleOnce;
 
     ResultCode enumerate (std::vector<AudioEndpoint>& out) override
     {
         ++calls;
         if (failed (result))
             return result;
+        if (staleOnce)
+        {
+            out = *staleOnce;
+            staleOnce.reset();
+            return result::ok;
+        }
         out = endpoints;
         return out.empty() ? result::notFound : result::ok;
     }

@@ -1,6 +1,8 @@
 #include "core/WatchdogEngine.h"
 #include "tests/Mocks.h"
 
+#include <thread>
+
 namespace audioslave::test
 {
 // The incompatible-device policy and the kept device names (WatchdogEngine
@@ -238,6 +240,40 @@ public:
             rig.engine->setConfig (config (true, true));
             rig.engine->scanOnce();
             expect (rig.stateOf ("cam") == EndpointState::disabled);
+        }
+
+        beginTest ("A stale enumeration never takes a device Audioslave disabled for enabled again");
+        {
+            Rig rig (config (true, true));
+            auto before = rig.en.endpoints; // enumerated while everything was still active
+            rig.engine->scanOnce();
+            expect (rig.stateOf ("cam") == EndpointState::disabled);
+            rig.en.staleOnce = before;
+            rig.engine->scanOnce();
+            const auto rec = rig.state.get ("cam");
+            expect (rec.has_value() && rec->disabled, "the record lost its disabled flag");
+            expect (rec->history.size() == 1);
+            // Still Audioslave's: turning the policy off enables it again.
+            rig.engine->setConfig (config (false, false));
+            rig.engine->scanOnce();
+            expect (rig.stateOf ("cam") == EndpointState::active);
+        }
+
+        beginTest ("Scans run one at a time (worker and an applied change)");
+        {
+            Rig rig (config (true, true));
+            std::vector<std::thread> threads;
+            for (int i = 0; i < 4; ++i)
+                threads.emplace_back ([&]
+                {
+                    for (int n = 0; n < 5; ++n)
+                        rig.engine->scanOnce (ScanKind::full, true);
+                });
+            for (auto& t : threads)
+                t.join();
+            expectEquals (rig.admin.disableCalls.load(), 2); // each incompatible device exactly once
+            expect (rig.state.get ("cam")->disabled);
+            expect (rig.state.get ("hdmi")->disabled);
         }
 
         beginTest ("A disable that does not stick is a failure, not a success");
