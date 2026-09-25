@@ -162,7 +162,6 @@ public:
                                         : utf8 ("Aguardando a primeira verificação."),
                           theme::text };
             modeText_ = s->mode == "service" ? utf8 ("Serviço do Windows") : utf8 ("Modo portátil");
-            logsDir_ = s->logsDir;
             rows_ = s->endpoints;
             targetRate_ = static_cast<std::uint32_t> (s->sampleRate);
             targetBits_ = static_cast<std::uint16_t> (s->bitDepth);
@@ -214,20 +213,14 @@ public:
         g.drawText (juce::String (static_cast<int> (rows_.size())) + " endpoint(s)", devicesTitle_, juce::Justification::centredRight,
                     false);
 
-        if (logsDir_.isNotEmpty())
-        {
-            g.setColour (theme::textFaint);
-            g.setFont (theme::font (12.5f));
-            g.drawFittedText ("Logs: " + logsDir_, logsTextArea_, juce::Justification::centredRight, 1);
-        }
     }
 
     void resized() override
     {
         auto area = getLocalBounds().reduced (28, 22);
 
-        // Header: logo, name / version, Configurações and the logs folder;
-        // on the right the status pill and "Verificar agora".
+        // Header: logo, name / version and Configurações; on the right the
+        // status pill and "Verificar agora".
         auto header = area.removeFromTop (64);
         logoArea_ = header.removeFromLeft (64);
         header.removeFromLeft (16);
@@ -240,8 +233,6 @@ public:
         subtitleArea_ = titleBlock;
         header.removeFromLeft (8);
         settingsButton_.setBounds (header.removeFromLeft (170).withSizeKeepingCentre (170, 40));
-        header.removeFromLeft (10);
-        logs_.setBounds (header.removeFromLeft (164).withSizeKeepingCentre (164, 40));
         area.removeFromTop (22);
 
         auto cardsRow = area.removeFromTop (112);
@@ -254,10 +245,10 @@ public:
         }
         area.removeFromTop (18);
 
+        // Footer: pause / resume on the left, the logs folder on the right.
         auto footer = area.removeFromBottom (40);
         toggle_.setBounds (footer.removeFromLeft (230));
-        footer.removeFromLeft (16);
-        logsTextArea_ = footer;
+        logs_.setBounds (footer.removeFromRight (180));
         area.removeFromBottom (18);
 
         devicesCard_ = area;
@@ -452,9 +443,9 @@ private:
     bool connected_ = false;
     std::vector<EndpointStatus> rows_;
     Card exclusive_, format_, activity_;
-    juce::String stateText_, modeText_, logsDir_;
+    juce::String stateText_, modeText_;
     juce::Colour stateColour_ = theme::textDim;
-    juce::Rectangle<int> logoArea_, titleArea_, subtitleArea_, pillArea_, cards_[3], devicesCard_, devicesTitle_, logsTextArea_;
+    juce::Rectangle<int> logoArea_, titleArea_, subtitleArea_, pillArea_, cards_[3], devicesCard_, devicesTitle_;
     bool paused_ = false;
 };
 
