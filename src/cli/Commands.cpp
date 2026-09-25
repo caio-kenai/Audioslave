@@ -146,6 +146,156 @@ ipc::Reply sendToHost (ipc::Command command)
     return reply;
 }
 
+ipc::Reply sendToHost (ipc::Command command, const juce::var& args, int timeoutMs = 60000)
+{
+    ipc::ControlClient client (false);
+    if (! client.connect())
+    {
+        ipc::Reply reply;
+        reply.error = "the Audioslave service is not reachable";
+        return reply;
+    }
+    auto reply = client.request (command, args, timeoutMs);
+    client.disconnect();
+    return reply;
+}
+
+// The service's current audio settings, changed by --format=on|off,
+// --rate=N, --bits=N and --disable-incompatible=on|off.
+ipc::AudioSettings settingsFromArguments (const juce::ArgumentList& args)
+{
+    const auto reply = sendToHost (ipc::Command::status);
+    if (! reply.delivered || ! reply.status)
+        ConsoleApplication::fail ("The Audioslave service is not reachable: " + reply.error, 1);
+    const auto& s = *reply.status;
+    ipc::AudioSettings a;
+    a.formatStandardization = s.formatStandardization;
+    a.sampleRate = static_cast<std::uint32_t> (s.sampleRate);
+    a.bitDepth = static_cast<std::uint16_t> (s.bitDepth);
+    a.disableIncompatibleDevices = s.disableIncompatibleDevices;
+
+    auto onOff = [&args] (const char* option, bool& field)
+    {
+        if (! args.containsOption (option))
+            return;
+        const auto v = args.getValueForOption (option).toLowerCase();
+        if (v != "on" && v != "off")
+            ConsoleApplication::fail (juce::String (option) + " expects on or off", 1);
+        field = v == "on";
+    };
+    onOff ("--format", a.formatStandardization);
+    onOff ("--disable-incompatible", a.disableIncompatibleDevices);
+    if (args.containsOption ("--rate"))
+    {
+        const auto rate = static_cast<std::uint64_t> (args.getValueForOption ("--rate").getLargeIntValue());
+        if (! isSupportedSampleRate (rate))
+            ConsoleApplication::fail ("--rate: unsupported sample rate", 1);
+        a.sampleRate = static_cast<std::uint32_t> (rate);
+        a.formatStandardization = true;
+    }
+    if (args.containsOption ("--bits"))
+    {
+        const auto bits = static_cast<std::uint64_t> (args.getValueForOption ("--bits").getLargeIntValue());
+        if (! isSupportedBitDepth (bits))
+            ConsoleApplication::fail ("--bits: use 16, 24 or 32", 1);
+        a.bitDepth = static_cast<std::uint16_t> (bits);
+        a.formatStandardization = true;
+    }
+    return a;
+}
+
+void printDeviceReports (const std::vector<DeviceReport>& devices)
+{
+    for (const auto& d : devices)
+        printLine ("  " + deviceActionName (d.action).paddedRight (' ', 14) + compatibilityName (d.compatibility).paddedRight (' ', 18)
+                   + "[" + endpointFlowName (d.flow) + "] " + d.name
+                   + (d.currentFormat.isNotEmpty() ? " | now " + d.currentFormat : juce::String())
+                   + (d.capabilities.known ? " | supports " + d.capabilities.describeRates() + " / " + d.capabilities.describeDepths()
+                                           : juce::String())
+                   + (d.reason.isNotEmpty() && (d.compatibility != Compatibility::compatible || d.action == DeviceAction::failed)
+                          ? "\n" + juce::String::repeatedString (" ", 34) + d.reason
+                          : juce::String()));
+}
+
+juce::String describeSettings (const ipc::AudioSettings& a)
+{
+    return a.formatStandardization ? juce::String (a.sampleRate) + " Hz / " + juce::String (a.bitDepth) + "-bit, incompatible devices "
+                                         + (a.disableIncompatibleDevices ? "disabled" : "ignored")
+                                   : juce::String ("format standardization off");
+}
+
+int commandAnalyze (const juce::ArgumentList& args)
+{
+    const auto settings = settingsFromArguments (args);
+    const auto reply = sendToHost (ipc::Command::analyze, ipc::toVar (settings));
+    if (! reply.delivered || ! reply.ok)
+        ConsoleApplication::fail ("Analysis failed: " + reply.error, 1);
+    printLine ("Preview of " + describeSettings (settings) + " (nothing was changed):");
+    printDeviceReports (ipc::deviceReportsFromVar (reply.result.getProperty ("devices", {})));
+    return 0;
+}
+
+int commandConfigure (const juce::ArgumentList& args)
+{
+    const auto settings = settingsFromArguments (args);
+    auto preview = sendToHost (ipc::Command::analyze, ipc::toVar (settings));
+    if (! preview.delivered || ! preview.ok)
+        ConsoleApplication::fail ("Analysis failed: " + preview.error, 1);
+    const auto planned = ipc::deviceReportsFromVar (preview.result.getProperty ("devices", {}));
+    bool disables = false;
+    for (const auto& d : planned)
+        disables = disables || d.action == DeviceAction::disable;
+    if (settings.disableIncompatibleDevices && ! args.containsOption ("--yes|-y"))
+    {
+        printLine ("Preview of " + describeSettings (settings) + ":");
+        printDeviceReports (planned);
+        ConsoleApplication::fail (juce::String (disables ? "These devices would be disabled. " : "")
+                                      + "Disabling incompatible devices needs your consent: add --yes.",
+                                  1);
+    }
+    auto confirmed = settings;
+    confirmed.confirmDisable = settings.disableIncompatibleDevices;
+    const auto reply = sendToHost (ipc::Command::configure, ipc::toVar (confirmed));
+    if (! reply.delivered || ! reply.ok)
+        ConsoleApplication::fail ("Configuration failed: " + reply.error, 1);
+    printLine ("Saved and applied: " + describeSettings (settings)
+               + (reply.result.getProperty ("paused", false) ? " (monitoring is paused: applied on resume)" : ""));
+    printDeviceReports (ipc::deviceReportsFromVar (reply.result.getProperty ("devices", {})));
+    return 0;
+}
+
+int commandRename (const juce::ArgumentList& args)
+{
+    if (args.size() < 2)
+        ConsoleApplication::fail ("Usage: Audioslave rename <endpoint id> <name> | --release", 1);
+    const auto id = args[1].text;
+    juce::StringArray words;
+    for (int i = 2; i < args.size(); ++i)
+        if (args[i].text != "--release")
+            words.add (args[i].text);
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("id", id);
+    o->setProperty ("name", args.containsOption ("--release") ? juce::String() : words.joinIntoString (" "));
+    const auto reply = sendToHost (ipc::Command::rename, juce::var (o));
+    if (! reply.delivered || ! reply.ok)
+        ConsoleApplication::fail ("Rename failed: " + reply.error, 1);
+    printLine (args.containsOption ("--release") ? "The kept name was released." : "Renamed; the name is kept by Audioslave.");
+    return 0;
+}
+
+int commandEnable (const juce::ArgumentList& args)
+{
+    if (args.size() < 2)
+        ConsoleApplication::fail ("Usage: Audioslave enable <endpoint id>", 1);
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("id", args[1].text);
+    const auto reply = sendToHost (ipc::Command::enable, juce::var (o));
+    if (! reply.delivered || ! reply.ok)
+        ConsoleApplication::fail ("Enable failed: " + reply.error, 1);
+    printLine ("Enabled; the incompatible-device policy leaves it enabled until the settings change.");
+    return 0;
+}
+
 int commandInstall (const juce::ArgumentList& args)
 {
     requireAdmin ("install", args);
@@ -349,6 +499,12 @@ int run (const juce::ArgumentList& args)
                 [] (const juce::ArgumentList& a) { return commandPauseResume (false, a); });
     addCommand (app, "rescan", "", "Ask the running service for a full scan now", [] (const juce::ArgumentList&) { return commandRescan(); });
     addCommand (app, "scan", "", "Run one enforcement pass in this process", [] (const juce::ArgumentList&) { return commandScan(); });
+    addCommand (app, "analyze", "[--format=on|off] [--rate=N] [--bits=16|24|32] [--disable-incompatible=on|off]",
+                "Preview what audio settings would do to every device", commandAnalyze);
+    addCommand (app, "configure", "[--format=on|off] [--rate=N] [--bits=16|24|32] [--disable-incompatible=on|off] [--yes]",
+                "Save and apply audio settings through the service", commandConfigure);
+    addCommand (app, "rename", "<endpoint id> <name> | --release", "Rename a device and keep the name", commandRename);
+    addCommand (app, "enable", "<endpoint id>", "Re-enable a device Audioslave disabled", commandEnable);
     addCommand (app, "devices", "", "List endpoints: exclusive mode, formats, JUCE device names",
                 [] (const juce::ArgumentList&) { return runDevices(); });
     addCommand (app, "diagnose", "[--probe-exclusive]", "Full self-check (the probe opens devices through JUCE)",
