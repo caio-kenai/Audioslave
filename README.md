@@ -123,8 +123,8 @@ No topo ficam **Configurações**, o estado e **Verificar agora**; embaixo, **Pa
 </p>
 
 Clique com o botão direito em um dispositivo para **renomear** (o nome é aplicado no Windows e
-mantido pelo Audioslave), deixar de manter o nome escolhido ou **reativar** um dispositivo que o
-Audioslave desabilitou.
+mantido pelo Audioslave), deixar de manter o nome escolhido ou **reativar e manter habilitado** um
+dispositivo que o Audioslave desabilitou.
 
 ### Configurações
 
@@ -345,9 +345,13 @@ escolhido). Os dois casos são mostrados e registrados separadamente.
 - **Reativação**: o Audioslave só reativa dispositivos que **ele mesmo** desabilitou — quando
   passam a suportar o formato escolhido ou quando a opção é desligada. Dispositivos desabilitados
   por você nunca são tocados.
-- **Sem loops**: um dispositivo que volta a ser habilitado (por você, pelo Windows ou pelo driver)
-  só é desabilitado de novo depois de 10 minutos e no máximo 3 vezes em 24 h; depois disso fica
-  habilitado até a configuração mudar. Reativar pela janela também o deixa habilitado.
+- **Como serviço**: se um dispositivo incompatível for habilitado de novo (no painel de Som, pelo
+  Windows ou pelo driver), ele é desabilitado de novo na hora. Só *Reativar e manter habilitado*,
+  no menu do dispositivo na janela, o deixa habilitado até a configuração mudar.
+- **Sem loops**: um dispositivo recriado sem parar (mais de 5 vezes em 10 minutos) espera esse
+  intervalo passar antes de ser desabilitado de novo.
+- **Dispositivos desconectados** nunca são considerados: sem formatos visíveis, não são tratados
+  como incompatíveis nem desabilitados.
 
 ## Instalação
 
@@ -369,7 +373,9 @@ Audioslave-Setup.exe /S /dir="D:\Apps\Audioslave" /notray
 
 O instalador oferece as mesmas opções de áudio da janela, incluindo *Desabilitar dispositivos
 que não suportam a configuração selecionada* (desmarcada por padrão; quando marcada, os
-dispositivos afetados são listados para confirmação antes de instalar). Tudo pode ser alterado
+dispositivos afetados são listados para confirmação antes de instalar). Com a padronização
+ligada, o instalador também avisa, com *Continuar* / *Cancelar*, sobre dispositivos limitados pela
+profundidade de bits ou sem a taxa de amostragem, como a tela de Configurações. Tudo pode ser alterado
 depois em **Configurações**.
 
 **Atualização**: basta executar o instalador de uma versão nova.
