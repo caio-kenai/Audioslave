@@ -27,6 +27,14 @@ using DialogCallback = std::function<void (int result, juce::Component* extra)>;
 
 void showDialog (DialogOptions options, DialogCallback callback = {});
 
+// A text field for DialogOptions::extra, with an optional live caption under
+// it (e.g. how the text will be shown). Enter confirms the dialog (first
+// button), Esc cancels it, and the field has the keyboard focus.
+std::unique_ptr<juce::Component> makeTextField (const juce::String& text,
+                                                std::function<juce::String (const juce::String&)> caption = {});
+// The text typed in a field made by makeTextField (trimmed).
+juce::String textFieldValue (juce::Component* extra);
+
 // Convenience: one "OK" button.
 void showMessage (juce::MessageBoxIconType icon, const juce::String& title, const juce::String& message,
                   std::function<void()> onClose = {});

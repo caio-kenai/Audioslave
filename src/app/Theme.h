@@ -31,7 +31,8 @@ inline constexpr float radius = 8.0f;
 // Typography ----------------------------------------------------------------
 juce::Font font (float height, bool bold = false);
 
-// Button variants: button.getProperties().set (variantProperty, "primary" | "ghost").
+// Button variants: button.getProperties().set (variantProperty, ...):
+// "primary" (orange), "secondary" (grey), "outline" (orange border), "ghost", "danger".
 inline const juce::Identifier variantProperty { "variant" };
 void setVariant (juce::Button& button, const juce::String& variant);
 
@@ -50,9 +51,13 @@ enum class Icon
     window,
     folder,
     power,
-    settings
+    settings,
+    edit
 };
 std::unique_ptr<juce::Drawable> makeIcon (Icon icon, juce::Colour colour);
+
+// A small icon drawn before a TextButton's text (in the text's colour).
+void setButtonIcon (juce::Button& button, Icon icon);
 
 class LookAndFeel final : public juce::LookAndFeel_V4
 {

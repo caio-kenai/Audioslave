@@ -40,6 +40,15 @@ public:
     // was minimised, like launching a program does.
     void bringToFront();
 
+    enum DeviceMenuItem
+    {
+        deviceRename = 1,
+        deviceReleaseName,
+        deviceEnable
+    };
+    // Right-click menu of a device row.
+    static juce::PopupMenu deviceMenu (const EndpointStatus& device, bool connected);
+
     void closeButtonPressed() override;
     bool keyPressed (const juce::KeyPress& key) override;
     void resized() override;

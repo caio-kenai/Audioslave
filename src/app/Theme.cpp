@@ -112,6 +112,14 @@ void setVariant (juce::Button& button, const juce::String& variant)
     button.repaint();
 }
 
+const juce::Identifier iconProperty { "icon" };
+
+void setButtonIcon (juce::Button& button, Icon icon)
+{
+    button.getProperties().set (iconProperty, static_cast<int> (icon));
+    button.repaint();
+}
+
 void paintCard (juce::Graphics& g, juce::Rectangle<float> area)
 {
     g.setColour (surface);
@@ -177,6 +185,17 @@ std::unique_ptr<juce::Drawable> makeIcon (Icon icon, juce::Colour colour)
             p.addCentredArc (10.0f, 10.5f, 6.0f, 6.0f, 0.0f, 0.65f, juce::MathConstants<float>::twoPi - 0.65f, true);
             p.startNewSubPath (10.0f, 3.0f);
             p.lineTo (10.0f, 9.5f);
+            break;
+        case Icon::edit:
+            // Pencil.
+            p.startNewSubPath (4.5f, 15.5f);
+            p.lineTo (5.2f, 12.2f);
+            p.lineTo (13.2f, 4.2f);
+            p.lineTo (15.8f, 6.8f);
+            p.lineTo (7.8f, 14.8f);
+            p.closeSubPath();
+            p.startNewSubPath (11.6f, 5.8f);
+            p.lineTo (14.2f, 8.4f);
             break;
         case Icon::settings:
             // Three sliders.
@@ -276,6 +295,11 @@ void LookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button,
         fill = down ? danger.darker (0.2f) : highlighted ? danger.brighter (0.1f) : danger.withAlpha (0.85f);
         border = fill;
     }
+    else if (variant == "outline")
+    {
+        fill = down ? accent.withAlpha (0.28f) : highlighted ? accentSoft : accent.withAlpha (0.08f);
+        border = highlighted ? accentHover : accent;
+    }
     else if (variant == "ghost")
     {
         fill = down ? surfaceRaised.brighter (0.1f) : highlighted ? surfaceRaised : juce::Colours::transparentBlack;
@@ -311,12 +335,30 @@ juce::Font LookAndFeel::getTextButtonFont (juce::TextButton&, int buttonHeight)
 void LookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool)
 {
     const auto variant = variantOf (button);
-    auto colour = variant == "primary" || variant == "danger" ? juce::Colours::white : variant == "ghost" ? textDim : text;
+    auto colour = variant == "primary" || variant == "danger" ? juce::Colours::white
+                  : variant == "ghost"                        ? textDim
+                  : variant == "outline"                      ? accentLight
+                                                              : text;
     if (! button.isEnabled())
         colour = colour.withMultipliedAlpha (0.45f);
+    const auto f = getTextButtonFont (button, button.getHeight());
+    auto area = button.getLocalBounds().reduced (12, 0);
+
+    // Optional icon, centred together with the text.
+    if (const auto* iconValue = button.getProperties().getVarPointer (iconProperty))
+    {
+        const float iconSize = 18.0f, gap = 8.0f;
+        const float textW = juce::jmin ((float) area.getWidth() - iconSize - gap,
+                                        juce::GlyphArrangement::getStringWidth (f, button.getButtonText()));
+        const float x = (float) area.getCentreX() - (iconSize + gap + textW) * 0.5f;
+        const auto icon = makeIcon (static_cast<Icon> (static_cast<int> (*iconValue)), colour);
+        icon->drawWithin (g, { x, (float) area.getCentreY() - iconSize * 0.5f, iconSize, iconSize }, juce::RectanglePlacement::centred,
+                          1.0f);
+        area = juce::Rectangle<float> (x + iconSize + gap, (float) area.getY(), textW + 2.0f, (float) area.getHeight()).toNearestInt();
+    }
     g.setColour (colour);
-    g.setFont (getTextButtonFont (button, button.getHeight()));
-    g.drawFittedText (button.getButtonText(), button.getLocalBounds().reduced (12, 0), juce::Justification::centred, 1);
+    g.setFont (f);
+    g.drawFittedText (button.getButtonText(), area, juce::Justification::centred, 1);
 }
 
 // Switch-style toggles (track + knob) with the label on the right.

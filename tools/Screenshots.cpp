@@ -181,6 +181,10 @@ public:
               out_.getChildFile ("tray-menu.png"));
         save (renderMenu (buildTrayMenu (controllerFor (EngineState::paused)), lookAndFeel_, 1.5f),
               out_.getChildFile ("tray-menu-paused.png"));
+        {
+            auto device = sampleStatus (EngineState::running).endpoints[1];
+            save (renderMenu (StatusWindow::deviceMenu (device, true), lookAndFeel_, 1.5f), out_.getChildFile ("device-menu.png"));
+        }
 
         // Dialogs are real windows: shown briefly and captured.
         step_ = 2;
@@ -278,17 +282,15 @@ private:
             case 6:
             {
                 theme::DialogOptions o;
-                o.icon = juce::MessageBoxIconType::QuestionIcon;
+                o.icon = juce::MessageBoxIconType::NoIcon;
                 o.title = "Renomear dispositivo";
                 o.message = juce::String::fromUTF8 ("O Audioslave mantém este nome mesmo que o Windows ou o driver o redefinam.");
                 o.buttons = { "Renomear", "Cancelar" };
-                o.width = 400;
-                auto editor = std::make_unique<juce::TextEditor>();
-                editor->setFont (theme::font (15.0f));
-                editor->setIndents (10, 7);
-                editor->setText (juce::String::fromUTF8 ("Monitor Estúdio"), false);
-                editor->setSize (100, 34);
-                o.extra = std::move (editor);
+                o.width = 440;
+                o.extra = theme::makeTextField (juce::String::fromUTF8 ("Monitor Estúdio"), [] (const juce::String& text)
+                {
+                    return juce::String::fromUTF8 ("No Windows: ") + text + " (ASIOVADPRO Driver)";
+                });
                 theme::showDialog (std::move (o));
                 break;
             }

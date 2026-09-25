@@ -5,6 +5,50 @@ namespace audioslave::theme
 {
 namespace
 {
+class TextField final : public juce::Component
+{
+public:
+    TextField (const juce::String& initialText, std::function<juce::String (const juce::String&)> caption)
+        : caption_ (std::move (caption))
+    {
+        editor.setFont (font (15.0f));
+        editor.setIndents (12, 8);
+        editor.setColour (juce::TextEditor::backgroundColourId, surface);
+        editor.setText (initialText, false);
+        editor.selectAll();
+        editor.onTextChange = [this] { updateCaption(); };
+        addAndMakeVisible (editor);
+        if (caption_)
+        {
+            hint.setFont (font (13.0f));
+            hint.setColour (juce::Label::textColourId, textDim);
+            hint.setMinimumHorizontalScale (1.0f);
+            addAndMakeVisible (hint);
+            updateCaption();
+        }
+        setSize (100, caption_ ? 36 + 28 : 36);
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        editor.setBounds (r.removeFromTop (36));
+        hint.setBounds (r.withTrimmedTop (6));
+    }
+
+    juce::TextEditor editor;
+
+private:
+    void updateCaption()
+    {
+        if (caption_)
+            hint.setText (caption_ (editor.getText().trim()), juce::dontSendNotification);
+    }
+
+    std::function<juce::String (const juce::String&)> caption_;
+    juce::Label hint;
+};
+
 constexpr int padding = 26;
 constexpr int iconSize = 40;
 constexpr float corner = 14.0f;
@@ -25,7 +69,15 @@ public:
             addAndMakeVisible (b);
         }
         if (options_.extra != nullptr)
+        {
             addAndMakeVisible (*options_.extra);
+            if (auto* field = dynamic_cast<TextField*> (options_.extra.get()))
+            {
+                field_ = &field->editor;
+                field_->onReturnKey = [this] { finish (0); };
+                field_->onEscapeKey = [this] { finish (-1); };
+            }
+        }
 
         layoutText();
         const int extraH = options_.extra != nullptr ? options_.extra->getHeight() + 14 : 0;
@@ -44,7 +96,10 @@ public:
         toFront (true);
         juce::Process::makeForegroundProcess();
         enterModalState (true, nullptr, true);
-        grabKeyboardFocus();
+        if (field_ != nullptr)
+            field_->grabKeyboardFocus();
+        else
+            grabKeyboardFocus();
     }
 
     void paint (juce::Graphics& g) override
@@ -160,6 +215,7 @@ private:
     juce::OwnedArray<juce::TextButton> buttons_;
     juce::TextLayout text_;
     juce::Rectangle<int> textArea_;
+    juce::TextEditor* field_ = nullptr;
     bool finished_ = false;
 };
 } // namespace
@@ -168,6 +224,19 @@ void showDialog (DialogOptions options, DialogCallback callback)
 {
     auto* dialog = new ModalDialog (std::move (options), std::move (callback));
     dialog->show();
+}
+
+std::unique_ptr<juce::Component> makeTextField (const juce::String& initialText,
+                                                std::function<juce::String (const juce::String&)> caption)
+{
+    return std::make_unique<TextField> (initialText, std::move (caption));
+}
+
+juce::String textFieldValue (juce::Component* extra)
+{
+    if (auto* field = dynamic_cast<TextField*> (extra))
+        return field->editor.getText().trim();
+    return {};
 }
 
 void showMessage (juce::MessageBoxIconType icon, const juce::String& title, const juce::String& message,

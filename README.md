@@ -115,6 +115,12 @@ de amostragem). Janela normal do Windows: minimizar, maximizar/restaurar (també
 no título e *snap layouts*), fechar e redimensionar pelas bordas; posição, tamanho e estado
 maximizado são lembrados por usuário.
 
+No topo ficam **Configurações**, **Pasta de logs**, o estado e **Verificar agora**.
+
+<p>
+  <img src="docs/screenshots/device-menu.png" alt="Menu de um dispositivo" width="292">
+</p>
+
 Clique com o botão direito em um dispositivo para **renomear** (o nome é aplicado no Windows e
 mantido pelo Audioslave), deixar de manter o nome escolhido ou **reativar** um dispositivo que o
 Audioslave desabilitou.

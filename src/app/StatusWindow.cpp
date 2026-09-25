@@ -93,8 +93,11 @@ public:
         addAndMakeVisible (table_);
 
         theme::setVariant (toggle_, "primary");
-        theme::setVariant (scan_, "secondary");
-        theme::setVariant (logs_, "ghost");
+        theme::setVariant (scan_, "outline");
+        theme::setVariant (logs_, "secondary");
+        theme::setButtonIcon (scan_, theme::Icon::refresh);
+        theme::setButtonIcon (logs_, theme::Icon::folder);
+        theme::setButtonIcon (settingsButton_, theme::Icon::settings);
         toggle_.onClick = [this]
         {
             auto& action = paused_ ? actions_.resume : actions_.pause;
@@ -103,7 +106,7 @@ public:
         };
         scan_.onClick = [this] { if (actions_.scan) actions_.scan(); };
         logs_.onClick = [this] { if (actions_.openLogs) actions_.openLogs(); };
-        theme::setVariant (settingsButton_, "secondary");
+        theme::setVariant (settingsButton_, "primary");
         settingsButton_.onClick = [this] { showSettings (true); };
         for (auto* b : { &toggle_, &scan_, &settingsButton_, &logs_ })
         {
@@ -112,7 +115,7 @@ public:
         }
         addChildComponent (settings_);
 
-        setSize (1100, 680);
+        setSize (1120, 680);
     }
 
     ~Content() override
@@ -223,12 +226,22 @@ public:
     {
         auto area = getLocalBounds().reduced (28, 22);
 
+        // Header: logo, name / version, Configurações and the logs folder;
+        // on the right the status pill and "Verificar agora".
         auto header = area.removeFromTop (64);
         logoArea_ = header.removeFromLeft (64);
         header.removeFromLeft (16);
-        pillArea_ = header.removeFromRight (190).withSizeKeepingCentre (190, 34);
-        titleArea_ = header.removeFromTop (36);
-        subtitleArea_ = header;
+        scan_.setBounds (header.removeFromRight (168).withSizeKeepingCentre (168, 40));
+        header.removeFromRight (10);
+        pillArea_ = header.removeFromRight (170).withSizeKeepingCentre (170, 34);
+        header.removeFromRight (16);
+        auto titleBlock = header.removeFromLeft (240);
+        titleArea_ = titleBlock.removeFromTop (36);
+        subtitleArea_ = titleBlock;
+        header.removeFromLeft (8);
+        settingsButton_.setBounds (header.removeFromLeft (170).withSizeKeepingCentre (170, 40));
+        header.removeFromLeft (10);
+        logs_.setBounds (header.removeFromLeft (164).withSizeKeepingCentre (164, 40));
         area.removeFromTop (22);
 
         auto cardsRow = area.removeFromTop (112);
@@ -242,14 +255,8 @@ public:
         area.removeFromTop (18);
 
         auto footer = area.removeFromBottom (40);
-        toggle_.setBounds (footer.removeFromLeft (210));
-        footer.removeFromLeft (10);
-        scan_.setBounds (footer.removeFromLeft (160));
-        footer.removeFromLeft (10);
-        settingsButton_.setBounds (footer.removeFromLeft (160));
-        footer.removeFromLeft (10);
-        logs_.setBounds (footer.removeFromLeft (190));
-        footer.removeFromLeft (12);
+        toggle_.setBounds (footer.removeFromLeft (230));
+        footer.removeFromLeft (16);
         logsTextArea_ = footer;
         area.removeFromBottom (18);
 
@@ -374,55 +381,49 @@ private:
             return;
         table_.selectRow (row);
         const auto device = rows_[static_cast<size_t> (row)];
-        juce::PopupMenu menu;
-        menu.addSectionHeader (device.name);
-        menu.addItem (1, utf8 ("Renomear…"), connected_);
-        if (device.customName)
-            menu.addItem (2, utf8 ("Deixar de manter o nome escolhido"), connected_);
-        if (device.disabledByAudioslave)
-            menu.addItem (3, utf8 ("Reativar dispositivo"), connected_);
+        auto menu = StatusWindow::deviceMenu (device, connected_);
         auto alive = alive_;
-        menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition().withMinimumWidth (260), [this, alive, device] (int choice)
+        menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition().withMinimumWidth (280).withMaximumNumColumns (1),
+                            [this, alive, device] (int choice)
         {
             if (! *alive)
                 return;
-            if (choice == 1)
+            if (choice == StatusWindow::deviceRename)
                 rename (device);
-            else if (choice == 2)
+            else if (choice == StatusWindow::deviceReleaseName)
                 send (ipc::Command::rename, device.id, {}, utf8 ("Não foi possível liberar o nome"));
-            else if (choice == 3)
+            else if (choice == StatusWindow::deviceEnable)
                 send (ipc::Command::enable, device.id, {}, utf8 ("Não foi possível reativar o dispositivo"));
         });
     }
 
     void rename (const EndpointStatus& device)
     {
-        auto editor = std::make_unique<juce::TextEditor>();
-        editor->setFont (theme::font (15.0f));
-        editor->setIndents (10, 7);
-        editor->setText (device.description.isNotEmpty() ? device.description : device.name, false);
-        editor->selectAll();
-        editor->setSize (100, 34);
-        auto* raw = editor.get();
-
+        // Windows shows "<name> (<adapter>)": preview it as the user types.
+        const auto current = device.description.isNotEmpty() ? device.description : device.name;
+        const auto adapter = device.description.isNotEmpty() && device.name.startsWith (device.description)
+                                 ? device.name.substring (device.description.length()).trim()
+                                 : juce::String();
         theme::DialogOptions options;
-        options.icon = juce::MessageBoxIconType::QuestionIcon;
+        options.icon = juce::MessageBoxIconType::NoIcon;
         options.title = "Renomear dispositivo";
         options.message = utf8 ("O Audioslave mantém este nome mesmo que o Windows ou o driver o redefinam.");
         options.buttons = { "Renomear", "Cancelar" };
-        options.width = 400;
-        options.extra = std::move (editor);
+        options.width = 440;
+        options.extra = theme::makeTextField (current, [adapter] (const juce::String& text)
+        {
+            return text.isEmpty() ? utf8 ("Digite um nome.")
+                                  : utf8 ("No Windows: ") + text + (adapter.isNotEmpty() ? " " + adapter : juce::String());
+        });
         auto alive = alive_;
         theme::showDialog (std::move (options), [this, alive, id = device.id] (int button, juce::Component* extra)
         {
             if (! *alive || button != 0)
                 return;
-            const auto name = static_cast<juce::TextEditor*> (extra)->getText().trim();
-            if (name.isEmpty())
-                return;
-            send (ipc::Command::rename, id, name, utf8 ("Não foi possível renomear o dispositivo"));
+            const auto name = theme::textFieldValue (extra);
+            if (name.isNotEmpty())
+                send (ipc::Command::rename, id, name, utf8 ("Não foi possível renomear o dispositivo"));
         });
-        raw->grabKeyboardFocus();
     }
 
     void send (ipc::Command command, const juce::String& id, const juce::String& name, const juce::String& failure)
@@ -443,7 +444,7 @@ private:
     SettingsView settings_;
     juce::Image logo_;
     juce::TableListBox table_;
-    juce::TextButton toggle_ { "Pausar monitoramento" }, scan_ { "Verificar agora" }, logs_ { "Abrir pasta de logs" };
+    juce::TextButton toggle_ { "Pausar monitoramento" }, scan_ { "Verificar agora" }, logs_ { "Pasta de logs" };
     juce::TextButton settingsButton_ { juce::String::fromUTF8 ("Configurações") };
     std::uint32_t targetRate_ = 48000;
     std::uint16_t targetBits_ = 24;
@@ -467,7 +468,7 @@ StatusWindow::StatusWindow (Actions actions, std::function<void()> onClose)
     setDropShadowEnabled (true);
     setContentOwned (new Content (std::move (actions)), true);
     setResizable (true, true);
-    setResizeLimits (860, 560, 10000, 10000);
+    setResizeLimits (1060, 560, 10000, 10000);
     setIcon (TrayIcon::logoImage (false, 64));
     centreWithSize (getWidth(), getHeight());
 
@@ -503,6 +504,67 @@ void StatusWindow::update (const TrayController& controller)
 {
     if (auto* content = dynamic_cast<Content*> (getContentComponent()))
         content->update (controller);
+}
+
+namespace
+{
+// Header of a device's menu: its name (shortened to fit) and type / state.
+class DeviceMenuHeader final : public juce::PopupMenu::CustomComponent
+{
+public:
+    explicit DeviceMenuHeader (const EndpointStatus& d)
+        : juce::PopupMenu::CustomComponent (false),
+          name_ (d.name),
+          detail_ (flowText (d.flow) + utf8 ("  ·  ") + (d.disabledByAudioslave ? utf8 ("Desativado pelo Audioslave") : stateText (d.state)))
+    {
+    }
+
+    void getIdealSize (int& width, int& height) override
+    {
+        width = 280;
+        height = 52;
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().reduced (15, 8);
+        g.setColour (theme::text);
+        g.setFont (theme::font (14.0f, true));
+        g.drawText (name_, r.removeFromTop (20), juce::Justification::centredLeft, true);
+        g.setColour (theme::textFaint);
+        g.setFont (theme::font (12.5f));
+        g.drawText (detail_, r, juce::Justification::centredLeft, true);
+    }
+
+private:
+    juce::String name_, detail_;
+};
+} // namespace
+
+juce::PopupMenu StatusWindow::deviceMenu (const EndpointStatus& device, bool connected)
+{
+    juce::PopupMenu menu;
+    juce::PopupMenu::Item header;
+    header.itemID = 0;
+    header.isEnabled = false;
+    header.customComponent = new DeviceMenuHeader (device);
+    menu.addItem (std::move (header));
+    menu.addSeparator();
+
+    auto item = [&menu, connected] (int id, const juce::String& text, theme::Icon icon)
+    {
+        juce::PopupMenu::Item i (text);
+        i.itemID = id;
+        i.isEnabled = connected;
+        i.image = theme::makeIcon (icon, theme::text);
+        menu.addItem (std::move (i));
+    };
+    item (deviceRename, "Renomear", theme::Icon::edit);
+    if (device.customName)
+        item (deviceReleaseName, utf8 ("Deixar de manter este nome"), theme::Icon::refresh);
+    if (device.disabledByAudioslave)
+        item (deviceEnable, utf8 ("Reativar dispositivo"), theme::Icon::play);
+    return menu;
 }
 
 void StatusWindow::bringToFront()
