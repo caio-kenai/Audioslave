@@ -439,9 +439,7 @@ void AudioslaveApplication::showStatusWindow()
         });
     }
     window_->update (controller_);
-    window_->setVisible (true);
-    window_->setMinimised (false);
-    window_->toFront (true);
+    window_->bringToFront();
 }
 
 void AudioslaveApplication::showSettings()

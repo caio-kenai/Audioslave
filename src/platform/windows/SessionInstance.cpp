@@ -81,6 +81,9 @@ void SessionInstance::stopListening() { impl_->stop(); }
 
 bool SessionInstance::signalShow()
 {
+    // This (just launched, foreground) process lets the running tray bring
+    // its window to the front.
+    ::AllowSetForegroundWindow (ASFW_ANY);
     return signalEvent (brand::trayShowEventName);
 }
 

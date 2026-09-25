@@ -36,6 +36,10 @@ public:
     // Shows the "Configurações" page (or the dashboard).
     void showSettings (bool show);
 
+    // Shows the window in front of every other application, restored if it
+    // was minimised, like launching a program does.
+    void bringToFront();
+
     void closeButtonPressed() override;
     bool keyPressed (const juce::KeyPress& key) override;
     void resized() override;

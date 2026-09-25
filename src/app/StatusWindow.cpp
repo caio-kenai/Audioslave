@@ -1,3 +1,4 @@
+#include "platform/windows/WinCommon.h"
 #include "app/StatusWindow.h"
 #include "AudioslaveVersion.h"
 #include "app/Dialog.h"
@@ -502,6 +503,31 @@ void StatusWindow::update (const TrayController& controller)
 {
     if (auto* content = dynamic_cast<Content*> (getContentComponent()))
         content->update (controller);
+}
+
+void StatusWindow::bringToFront()
+{
+    setVisible (true);
+    setMinimised (false);
+    toFront (true);
+
+    // Windows only lets the foreground application raise its windows. The
+    // tray menu has closed by now (or another process asked us to show), so
+    // borrow the foreground thread's input state for the call.
+    const auto hwnd = static_cast<HWND> (getWindowHandle());
+    if (hwnd == nullptr || ::GetForegroundWindow() == hwnd)
+        return;
+    if (::IsIconic (hwnd))
+        ::ShowWindow (hwnd, SW_RESTORE);
+    const auto foregroundThread = ::GetWindowThreadProcessId (::GetForegroundWindow(), nullptr);
+    const auto thisThread = ::GetCurrentThreadId();
+    const bool attached = foregroundThread != 0 && foregroundThread != thisThread
+                          && ::AttachThreadInput (thisThread, foregroundThread, TRUE);
+    ::BringWindowToTop (hwnd);
+    ::SetForegroundWindow (hwnd);
+    ::SetActiveWindow (hwnd);
+    if (attached)
+        ::AttachThreadInput (thisThread, foregroundThread, FALSE);
 }
 
 void StatusWindow::showSettings (bool show)
