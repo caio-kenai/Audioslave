@@ -5,7 +5,6 @@ namespace audioslave::theme
 {
 namespace
 {
-constexpr int dialogWidth = 480;
 constexpr int padding = 26;
 constexpr int iconSize = 40;
 constexpr float corner = 14.0f;
@@ -31,7 +30,7 @@ public:
         layoutText();
         const int extraH = options_.extra != nullptr ? options_.extra->getHeight() + 14 : 0;
         const int h = padding + (int) std::ceil (text_.getHeight()) + 24 + extraH + 40 + padding;
-        setSize (dialogWidth, juce::jmax (150, h));
+        setSize (options_.width, juce::jmax (150, h));
         setWantsKeyboardFocus (true);
     }
 
@@ -140,7 +139,7 @@ private:
             s.append (options_.message, font (14.5f), textDim);
         }
         s.setLineSpacing (3.0f);
-        const int textWidth = dialogWidth - 2 * padding - (options_.icon != juce::MessageBoxIconType::NoIcon ? iconSize + 16 : 0);
+        const int textWidth = options_.width - 2 * padding - (options_.icon != juce::MessageBoxIconType::NoIcon ? iconSize + 16 : 0);
         text_.createLayout (s, (float) textWidth);
     }
 

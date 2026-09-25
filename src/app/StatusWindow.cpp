@@ -398,19 +398,18 @@ private:
     {
         auto editor = std::make_unique<juce::TextEditor>();
         editor->setFont (theme::font (15.0f));
-        editor->setIndents (10, 8);
+        editor->setIndents (10, 7);
         editor->setText (device.description.isNotEmpty() ? device.description : device.name, false);
         editor->selectAll();
-        editor->setSize (100, 38);
+        editor->setSize (100, 34);
         auto* raw = editor.get();
 
         theme::DialogOptions options;
         options.icon = juce::MessageBoxIconType::QuestionIcon;
         options.title = "Renomear dispositivo";
-        options.message = utf8 ("O nome é aplicado no Windows e mantido pelo Audioslave, mesmo que uma atualização do Windows "
-                                "ou do driver o redefina. O Windows exibe o nome seguido do adaptador, por exemplo "
-                                "\"Nome (Realtek Audio)\".");
+        options.message = utf8 ("O Audioslave mantém este nome mesmo que o Windows ou o driver o redefinam.");
         options.buttons = { "Renomear", "Cancelar" };
+        options.width = 400;
         options.extra = std::move (editor);
         auto alive = alive_;
         theme::showDialog (std::move (options), [this, alive, id = device.id] (int button, juce::Component* extra)

@@ -17,6 +17,7 @@ struct DialogOptions
     juce::String message;
     juce::StringArray buttons { "OK" };   // the first one is the main action
     bool destructive = false;             // paint the main action red
+    int width = 480;                      // compact dialogs (e.g. a single text field) use less
     std::unique_ptr<juce::Component> extra; // shown under the message (owned)
 };
 
