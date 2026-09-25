@@ -388,7 +388,7 @@ bool uninstall (const juce::File& dir, bool removeData, juce::String& error)
     return true;
 }
 
-bool relaunchUninstallerFromTemp (const Options& options, const juce::File& dir)
+bool relaunchUninstallerFromTemp (const Options& options, const juce::File& dir, int* exitCode)
 {
     const auto self = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
     const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory);
@@ -415,7 +415,12 @@ bool relaunchUninstallerFromTemp (const Options& options, const juce::File& dir)
     }
     win::UniqueHandle process (info.hProcess), thread (info.hThread);
     if (options.silent)
+    {
         ::WaitForSingleObject (process.get(), INFINITE); // keep /S synchronous for scripts
+        DWORD code = 0;
+        if (exitCode != nullptr && ::GetExitCodeProcess (process.get(), &code))
+            *exitCode = static_cast<int> (code);
+    }
     return true;
 }
 

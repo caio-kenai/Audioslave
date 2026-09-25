@@ -32,7 +32,8 @@ bool uninstall (const juce::File& dir, bool removeData, juce::String& error);
 
 // Uninstall.exe lives in the folder it removes: it copies itself to %TEMP%
 // and continues from there. True when the copy was started.
-bool relaunchUninstallerFromTemp (const Options& options, const juce::File& dir);
+// In silent mode it waits for the copy and returns its exit code in `exitCode`.
+bool relaunchUninstallerFromTemp (const Options& options, const juce::File& dir, int* exitCode = nullptr);
 
 // Stage 2 cannot delete itself: a detached cmd.exe removes it (and the
 // folder, when empty) a few seconds later.

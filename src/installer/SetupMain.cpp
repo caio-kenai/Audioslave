@@ -41,7 +41,13 @@ class SetupApplication final : public juce::JUCEApplication
 public:
     const juce::String getApplicationName() override { return "Audioslave Setup"; }
     const juce::String getApplicationVersion() override { return AUDIOSLAVE_VERSION_STRING; }
-    bool moreThanOneInstanceAllowed() override { return false; }
+    // The uninstaller continues from a copy in %TEMP% while the first process
+    // waits for it (/S): that copy must not be taken for a second instance,
+    // or it would quit at once without uninstalling anything.
+    bool moreThanOneInstanceAllowed() override
+    {
+        return getCommandLineParameters().containsIgnoreCase ("/uninstall-stage2");
+    }
 
     void initialise (const juce::String&) override
     {
@@ -107,9 +113,23 @@ private:
 
     void runUninstaller()
     {
-        if (options_.uninstallStage2 || options_.silent)
+        if (options_.uninstallStage2)
         {
             uninstallNow();
+            return;
+        }
+        if (options_.silent)
+        {
+            // Continue from %TEMP% (waiting for it, so /S stays synchronous
+            // for scripts): only a copy outside the folder can remove
+            // Uninstall.exe and the folder afterwards.
+            int exitCode = 0;
+            if (relaunchUninstallerFromTemp (options_, uninstallDir(), &exitCode))
+            {
+                finish (exitCode);
+                return;
+            }
+            uninstallNow(); // could not relaunch: the uninstaller is deleted at reboot
             return;
         }
 
