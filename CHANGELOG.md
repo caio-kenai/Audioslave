@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.0.1] - 2026-09-24
+
+### Novidades
+- **Configurações** na janela do Audioslave (e no menu da bandeja): padronização de formato, taxa
+  de amostragem, profundidade de bits e política de dispositivos incompatíveis podem ser alteradas
+  a qualquer momento, sem reinstalar nem reiniciar; o serviço grava, recarrega e aplica na hora.
+- Taxas de amostragem de **8000 a 384000 Hz** (8000, 11025, 12000, 16000, 22050, 24000, 32000,
+  44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000); o suporte real de cada dispositivo
+  continua sendo perguntado ao driver.
+- Prévia antes de aplicar: dispositivos compatíveis, limitados pela profundidade de bits, sem a
+  taxa de amostragem, ignorados e desabilitados; alerta de limitação de profundidade com
+  *Continuar* / *Cancelar*; relatório do que não pôde ser configurado e por quê.
+- Nova opção **Desabilitar dispositivos que não suportam a configuração selecionada**
+  (desligada por padrão, também no instalador): desabilita os incompatíveis somente depois de
+  confirmada para o formato escolhido, reativa-os quando voltam a ser compatíveis ou quando a
+  opção é desligada, trata dispositivos novos e recriados e nunca entra em loop (espera de 10 min
+  e no máximo 3 vezes por dia). Dispositivos desabilitados pelo usuário nunca são tocados.
+- **Renomear dispositivos** com o botão direito na lista: o nome é mantido mesmo que o Windows
+  ou o driver o redefinam; também é possível reativar um dispositivo desabilitado pelo Audioslave.
+- Coluna de **compatibilidade** na lista de dispositivos.
+- Janela com **minimizar, maximizar/restaurar e fechar**, além do redimensionamento pelas
+  bordas; posição, tamanho e estado maximizado lembrados.
+- Logs por dispositivo com nome, id, tipo, formato atual, pedido e suportado, resultado, motivo e
+  ação; notificações na bandeja para desabilitações e reativações automáticas.
+- CLI: `analyze`, `configure`, `rename` e `enable`; `devices` mostra taxas e profundidades
+  suportadas; `status` mostra a política de dispositivos incompatíveis.
+
+### Correções
+- Nova logo oficial (sem as bordas laterais); ícones do aplicativo e da bandeja gerados a partir
+  dela em todos os tamanhos do Windows (16 a 256 px).
+- O logo do menu da bandeja só aparecia ao passar o mouse sobre ele.
+- Pausar, retomar e verificar agora não fecham mais o menu da bandeja; abrir e encerrar fecham.
+- O ícone da bandeja segue o protocolo de notificação atual do Windows: o menu abre ao lado do
+  ícone quando o clique termina e o ícone continua visível, também entre os ícones ocultos.
+- Ícone da bandeja criado pelo Windows diretamente do quadro PNG do tamanho certo, sem perda de
+  nitidez, e atualizado quando a escala de DPI muda.
+- A versão nos detalhes do executável acompanha a versão do projeto.
+
 ## [1.0.0] - 2026-09-24
 
 Primeira versão do **Audioslave**.

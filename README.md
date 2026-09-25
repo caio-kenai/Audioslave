@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Versão" src="https://img.shields.io/badge/vers%C3%A3o-1.0.0-fe6902">
+  <img alt="Versão" src="https://img.shields.io/badge/vers%C3%A3o-1.0.1-fe6902">
   <img alt="JUCE 9" src="https://img.shields.io/badge/JUCE-9.0.2-8dc63f">
   <img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599c">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4">
@@ -33,7 +33,7 @@ alguém mexendo no painel de Som — o Audioslave desliga o modo exclusivo de no
 mudança ficou gravada e continua monitorando.
 
 Um ícone na **bandeja do sistema** mostra o estado e permite pausar, retomar, verificar agora,
-abrir a janela de status e encerrar a proteção.
+abrir a janela do Audioslave, mudar as configurações de áudio e encerrar a proteção.
 
 O Audioslave usa **JUCE** para a aplicação, a interface, threads, IPC, configuração, logs e
 testes, e as **APIs nativas do Windows** onde elas são a única forma correta de controlar o
@@ -56,12 +56,21 @@ muda.
   (ativos e desconectados), com releitura para confirmar cada correção
 - **Detecção em tempo real** de dispositivos novos, removidos, reconectados, recriados e de
   mudanças de propriedade, mais uma **verificação periódica** de segurança
-- **Padronização opcional de formato**: 44100, 48000, 88200, 96000, 176400 ou 192000 Hz e
-  16, 24 ou 32 bits — aplicada **somente** quando o driver informa que suporta o formato
+- **Padronização opcional de formato**: de 8000 a 384000 Hz e 16, 24 ou 32 bits — aplicada
+  **somente** quando o driver informa que suporta o formato
+- **Configurações na janela do Audioslave**: taxa de amostragem, profundidade de bits e política
+  de dispositivos incompatíveis alteradas a qualquer momento, sem reinstalar, com uma prévia do
+  que acontece com cada dispositivo antes de aplicar
+- **Dispositivos incompatíveis**: apenas ignorados (padrão) ou, opcionalmente, desabilitados —
+  sempre com confirmação, distinguindo *sem a taxa de amostragem* de *limitado pela
+  profundidade de bits*, com reativação automática e proteção contra loops
+- **Renomear dispositivos** pela janela: o nome é mantido mesmo que uma atualização do Windows
+  ou do driver o redefina
 - **Serviço do Windows** `Audioslave`: início automático, LocalSystem, funciona sem usuário
   logado, recuperação automática em falhas
 - **Bandeja do sistema** em JUCE, tema escuro, com status em tempo real enviado pelo serviço e
-  ícones gerados em cada tamanho do Windows (16 a 64 px), nítidos em qualquer escala de DPI
+  ícones gerados a partir do logo em cada tamanho do Windows (16 a 256 px), nítidos em qualquer
+  escala de DPI; pausar, retomar e verificar sem fechar o menu
 - **Pausar / retomar**: pausado, nenhum dispositivo é alterado; ao retomar há verificação completa
 - **Canal de controle seguro** entre bandeja/CLI e serviço (named pipe com DACL própria)
 - **Linha de comando** completa (status, pausa, diagnóstico, validação com JUCE)
@@ -84,24 +93,64 @@ O ícone do Audioslave fica na área de notificações. Ao passar o mouse, o too
 
 | Item | O que faz |
 |---|---|
-| **Cabeçalho (status)** | Logo, nome e o estado atual (*Em execução*, *Pausado*, *Parado*...). Clique para abrir a janela de status. |
-| **Pausar monitoramento** | Suspende as correções. O serviço continua em execução e recebendo eventos, mas nada é alterado. O ícone fica cinza e o estado aparece também no `services.msc`. |
-| **Retomar monitoramento** | Sai da pausa, relê a configuração e faz uma verificação completa. Se o serviço estiver parado, inicia o serviço. |
-| **Verificar agora** | Pede ao serviço uma verificação completa imediata. |
-| **Abrir** | Janela de status (também com clique esquerdo no ícone). |
+| **Cabeçalho (status)** | Logo, nome e o estado atual (*Em execução*, *Pausado*, *Parado*...), atualizado ao vivo. Clique para abrir a janela. |
+| **Pausar monitoramento** | Suspende as correções. O serviço continua em execução e recebendo eventos, mas nada é alterado. O ícone fica cinza e o estado aparece também no `services.msc`. **O menu continua aberto.** |
+| **Retomar monitoramento** | Sai da pausa, relê a configuração e faz uma verificação completa. Se o serviço estiver parado, inicia o serviço. **O menu continua aberto.** |
+| **Verificar agora** | Verificação completa imediata, consultando de novo os formatos de cada driver. **O menu continua aberto.** |
+| **Abrir** | Janela do Audioslave (também com clique esquerdo no ícone). Fecha o menu. |
+| **Configurações** | Janela do Audioslave direto nas configurações. Fecha o menu. |
 | **Encerrar** | Pede confirmação, para o serviço de forma limpa (sem acionar a recuperação automática) e fecha o ícone. A proteção volta na próxima inicialização do Windows ou ao abrir o Audioslave. |
 
-### Janela de status
+O ícone segue o protocolo de notificação atual do Windows (`NOTIFYICON_VERSION_4`): o menu abre
+quando o clique termina, ao lado do ícone, e o ícone continua visível durante toda a interação,
+inclusive na área de ícones ocultos. Dispositivos desabilitados ou reativados automaticamente
+geram uma notificação.
 
-Estado ao vivo, as duas funcionalidades, atividade (correções e última verificação), todos os
-dispositivos monitorados (tipo, estado, modo exclusivo, formato) e as mesmas ações do menu.
+### Janela do Audioslave
+
+Estado ao vivo, as duas funcionalidades, atividade (correções e última verificação) e todos os
+dispositivos monitorados: tipo, estado, modo exclusivo, formato e **compatibilidade** com o
+formato escolhido (*Compatível*, *Limitado* pela profundidade de bits, *Incompatível* sem a taxa
+de amostragem). Janela normal do Windows: minimizar, maximizar/restaurar (também com duplo clique
+no título e *snap layouts*), fechar e redimensionar pelas bordas; posição, tamanho e estado
+maximizado são lembrados por usuário.
+
+Clique com o botão direito em um dispositivo para **renomear** (o nome é aplicado no Windows e
+mantido pelo Audioslave), deixar de manter o nome escolhido ou **reativar** um dispositivo que o
+Audioslave desabilitou.
+
+### Configurações
+
+<p>
+  <img src="docs/screenshots/settings.png" alt="Configurações" width="760">
+</p>
+
+As configurações de áudio definidas no instalador podem ser alteradas aqui a qualquer momento,
+**sem reinstalar e sem reiniciar o computador**: padronização de formato, taxa de amostragem
+(8000 a 384000 Hz), profundidade de bits (16, 24 ou 32) e *Desabilitar dispositivos que não
+suportam a configuração selecionada*. Ao clicar em **Aplicar**, o serviço analisa cada dispositivo
+e mostra o que vai acontecer; quando há algo a decidir, pede confirmação:
+
+<p>
+  <img src="docs/screenshots/dialog-bit-depth.png" alt="Limitação de profundidade de bits" width="380">
+  &nbsp;
+  <img src="docs/screenshots/dialog-disable.png" alt="Dispositivos que serão desabilitados" width="380">
+</p>
+
+Depois de aplicar, um relatório lista o que não pôde ser configurado e por quê (por exemplo
+*"48000 Hz não disponível"* ou *"48000 Hz disponível, máximo de 16 bits"*) e o que foi
+desabilitado. O Audioslave nunca reduz a configuração global por causa do dispositivo mais
+limitado: a decisão é sempre sua.
 
 ### Diálogos e instalador
 
 <p>
   <img src="docs/screenshots/dialog-exit.png" alt="Confirmação" width="380">
   &nbsp;
-  <img src="docs/screenshots/installer.png" alt="Instalador" width="380">
+  <img src="docs/screenshots/dialog-rename.png" alt="Renomear dispositivo" width="380">
+</p>
+<p>
+  <img src="docs/screenshots/installer.png" alt="Instalador" width="560">
 </p>
 
 ## Arquitetura
@@ -143,7 +192,7 @@ dispositivos monitorados (tipo, estado, modo exclusivo, formato) e as mesmas aç
 |---|---|
 | Aplicação da bandeja, ciclo de vida, logoff | `JUCEApplication`, `MessageManager` |
 | Ícone e menu da bandeja | `SystemTrayIconComponent`, `PopupMenu` |
-| Janela de status, diálogos, instalador | `DocumentWindow`, `Component`, `TableListBox`, `LookAndFeel_V4` (tema próprio) |
+| Janela, configurações, diálogos, instalador | `DocumentWindow`, `Component`, `TableListBox`, `LookAndFeel_V4` (tema próprio) |
 | Worker do monitoramento | `juce::Thread` (`wait` / `notify`), `CriticalSection`, `ThreadSafeListenerList` |
 | Canal de controle (cliente) | `InterprocessConnection` |
 | Protocolo | `juce::JSON`, `var`, `MemoryBlock` |
@@ -198,14 +247,18 @@ dispositivos exatamente como um app JUCE os vê.
 
 ## Configuração
 
-`C:\ProgramData\Audioslave\config.ini` (criado pelo instalador; só administradores alteram):
+`C:\ProgramData\Audioslave\config.ini` (criado pelo instalador; só administradores e o serviço
+alteram — as **Configurações** da janela gravam por meio do serviço):
 
 ```ini
 [Features]
 ExclusiveModeProtection=true   ; função principal
 FormatStandardization=false    ; padronização de formato (opcional)
-SampleRate=48000               ; 44100 | 48000 | 88200 | 96000 | 176400 | 192000
+SampleRate=48000               ; 8000 | 11025 | 12000 | 16000 | 22050 | 24000 | 32000 | 44100
+                               ; 48000 | 88200 | 96000 | 176400 | 192000 | 352800 | 384000
 BitDepth=24                    ; 16 | 24 | 32
+DisableIncompatibleDevices=false ; true = desabilitar os dispositivos sem suporte ao formato
+DisableConfirmedFor=           ; gravado pela confirmação (taxa:bits); não editar
 
 [Monitor]
 Playback=true                  ; dispositivos de reprodução
@@ -218,10 +271,18 @@ Level=INFO                     ; DEBUG | INFO | WARN | ERROR
 
 [Behavior]
 Enforce=true                   ; false = apenas relatar, nunca alterar
+
+[DeviceNames]                  ; nomes escolhidos na janela (id do endpoint = nome)
+{0.0.0.00000000}.{...}=Monitor Estúdio
 ```
 
-Valores inválidos voltam ao padrão com aviso no log. As alterações valem ao **retomar** o
-monitoramento, ao reiniciar o serviço ou com `sc control Audioslave paramchange`.
+Valores inválidos voltam ao padrão com aviso no log. Alterações feitas na janela (ou com
+`Audioslave configure`) valem **na hora**; edições manuais valem ao **retomar** o monitoramento,
+ao reiniciar o serviço ou com `sc control Audioslave paramchange`.
+
+`C:\ProgramData\Audioslave\devices.json` é o estado do serviço (não é configuração): os
+dispositivos que o próprio Audioslave desabilitou, o motivo, quando e os formatos que eles
+suportavam — é o que permite reativá-los com segurança.
 
 ## Exclusive Mode
 
@@ -243,15 +304,43 @@ Funcionalidade **opcional** e independente. Antes de alterar qualquer dispositiv
 pergunta **ao driver** (`IKsFormatSupport`) se o formato é suportado:
 
 ```
-[Webcam 1 (NDI Webcam Audio)] format standardization skipped. Requested: 48000 Hz / 24-bit.
-Device supports: 44100 Hz / 16-bit, 48000 Hz / 16-bit. Current: 44100 Hz / 16-bit.
-Reason: requested format is not supported.
+[AudioFormat] Device: Webcam 1 (NDI Webcam Audio) | ID: {0.0.1.00000000}.{84c3...} | Type: capture |
+Current: 48000 Hz / 16-bit | Requested: 48000 Hz / 24-bit | Supported: 11025, 22050, 44100, 48000 Hz / 16-bit |
+Result: Incompatible (bit depth) | Reason: requested bit depth is not supported (48000 Hz is available
+only at 16-bit, not 24-bit) | Action: Ignored (device left as it is)
 ```
 
+- A lista de taxas é o que você pode **escolher**; o que cada dispositivo **suporta** é sempre
+  perguntado ao driver (todas as taxas × profundidades, em ~1–3 ms por dispositivo, guardado em
+  cache e consultado de novo quando o dispositivo muda ou em *Verificar agora*).
 - Nunca troca por outro formato: sem suporte, o dispositivo é pulado e registrado no log (uma vez).
 - 24 bits = 24/24 ou 24-em-32; 32 bits = inteiro ou ponto flutuante — o que o driver aceitar.
 - Aplicado com `IPolicyConfig`, como o painel de Som: o motor de áudio usa o novo formato na hora.
 - Só em dispositivos ativos.
+
+### Dispositivos incompatíveis
+
+Um dispositivo pode não suportar a **taxa de amostragem** escolhida, ou suportá-la mas **não na
+profundidade de bits** escolhida (por exemplo 48000 Hz apenas em 16 bits quando 24 foi
+escolhido). Os dois casos são mostrados e registrados separadamente.
+
+| Opção *Desabilitar dispositivos que não suportam a configuração selecionada* | O que acontece |
+|---|---|
+| **Desligada** (padrão) | O dispositivo é **ignorado**: continua habilitado e o motivo vai para o log. |
+| **Ligada** | O dispositivo é **desabilitado** no Windows (como *Desabilitar* no painel de Som), com verificação e registro de data/hora, dispositivo, id, motivo, formato pedido e ação. |
+
+- **Nunca silenciosamente**: antes da primeira execução a lista do que será desabilitado é
+  mostrada (janela, instalador ou `configure --yes` na CLI). A confirmação vale para aquele
+  formato; mudar o formato pede uma nova. Se a opção for ligada à mão no `config.ini`, a bandeja
+  pede a confirmação e, até lá, nada é desabilitado.
+- **Monitoramento contínuo**: dispositivos novos ou recriados pelo Windows são avaliados na hora;
+  desabilitações automáticas geram uma notificação na bandeja.
+- **Reativação**: o Audioslave só reativa dispositivos que **ele mesmo** desabilitou — quando
+  passam a suportar o formato escolhido ou quando a opção é desligada. Dispositivos desabilitados
+  por você nunca são tocados.
+- **Sem loops**: um dispositivo que volta a ser habilitado (por você, pelo Windows ou pelo driver)
+  só é desabilitado de novo depois de 10 minutos e no máximo 3 vezes em 24 h; depois disso fica
+  habilitado até a configuração mudar. Reativar pela janela também o deixa habilitado.
 
 ## Instalação
 
@@ -267,8 +356,14 @@ usuários, cria a pasta **Audioslave** no Menu Iniciar e a entrada em *Aplicativ
 Audioslave-Setup.exe /S                        :: instalação silenciosa (mantém a configuração)
 Audioslave-Setup.exe /S /format=48000:24       :: ativa a padronização (taxa:bits)
 Audioslave-Setup.exe /S /noformat              :: desativa a padronização
+Audioslave-Setup.exe /S /format=48000:24 /disableincompatible :: e desabilita os incompatíveis
 Audioslave-Setup.exe /S /dir="D:\Apps\Audioslave" /notray
 ```
+
+O instalador oferece as mesmas opções de áudio da janela, incluindo *Desabilitar dispositivos
+que não suportam a configuração selecionada* (desmarcada por padrão; quando marcada, os
+dispositivos afetados são listados para confirmação antes de instalar). Tudo pode ser alterado
+depois em **Configurações**.
 
 **Atualização**: basta executar o instalador de uma versão nova.
 
@@ -303,7 +398,11 @@ Eventos → Aplicativo*, origem **Audioslave**. Mensagens internas da JUCE caem 
 | `start` / `stop` / `restart` | Ciclo de vida do serviço |
 | `install` / `uninstall` | Registra / remove só o serviço (administrador) |
 | `scan` | Uma verificação neste processo |
-| `devices` | Endpoints, modo exclusivo, formato atual e suportados, nomes vistos pela JUCE |
+| `devices` | Endpoints, modo exclusivo, formato atual, taxas e profundidades suportadas, nomes vistos pela JUCE |
+| `analyze [--rate=N] [--bits=N] [--format=on\|off] [--disable-incompatible=on\|off]` | Prévia do que as configurações fariam com cada dispositivo (nada é alterado) |
+| `configure [mesmas opções] [--yes]` | Grava e aplica as configurações pelo serviço (desabilitar incompatíveis exige `--yes`) |
+| `rename <id> <nome>` / `rename <id> --release` | Renomeia um dispositivo e mantém o nome / deixa de manter |
+| `enable <id>` | Reativa um dispositivo desabilitado pelo Audioslave |
 | `diagnose [--probe-exclusive]` | Autodiagnóstico (a sonda abre o dispositivo pela JUCE) |
 | `validate` | Confirma com a JUCE que nenhum dispositivo abre em modo exclusivo |
 | `run` | Executa o watchdog neste console (Ctrl+C para parar) |
@@ -353,13 +452,20 @@ inicialização: `Audioslave`). Também funciona *Abrir Pasta* com o CMake integ
   endpoints removidos/recriados, snapshot de status.
 - **Config / Logging**: padrões, todas as taxas/profundidades, avisos, arquivos editados à mão,
   rotação de log.
-- **Audio**: políticas de modo exclusivo e de formato (suportado, 24-em-32, sem suporte, falhas).
+- **Audio**: políticas de modo exclusivo e de formato (suportado, 24-em-32, sem suporte, falhas);
+  capacidades por dispositivo e compatibilidade (todas as taxas de 8000 a 384000 Hz × 16/24/32
+  bits, taxa incompatível × profundidade incompatível).
+- **Device policy**: ignorar × desabilitar, confirmação por formato, reativação, dispositivos do
+  usuário nunca tocados, sem loops (espera e limite diário), varreduras concorrentes, nomes
+  mantidos.
 - **IPC**: protocolo, pipe real (conexão, comandos, comandos inválidos, quadros estranhos,
   serviço indisponível, push de status, desligamento do servidor).
 - **Service**: `ServiceHost` completo com pausa/retomada/recarga/parada via pipe e via SCM.
-- **Tray**: estados, menu e ações da bandeja.
+- **Tray / App**: estados, menu e ações da bandeja; textos da prévia e do relatório das
+  configurações.
 - **Integration** (`--integration`, somente leitura): enumeração real, leitura do modo
-  exclusivo, `IKsFormatSupport`, inventário JUCE WASAPI, SCM.
+  exclusivo, `IKsFormatSupport` (incluindo a sondagem completa de capacidades), inventário JUCE
+  WASAPI, SCM.
 
 ```bat
 build\bin\audioslave_tests.exe
@@ -383,11 +489,12 @@ build\bin\audioslave_tests.exe --category=IPC
 
 ```
 src/
-  app/                bandeja JUCE: aplicação, ícone, menu, janela de status, tema, diálogos, WinMain
+  app/                bandeja JUCE: aplicação, ícone, menu, janela, configurações, tema, diálogos, WinMain
   service/            ServiceHost, integração com o SCM, controle do serviço
-  core/               WatchdogEngine, políticas, memória por endpoint, status
+  core/               WatchdogEngine, políticas, compatibilidade de formato, estado dos dispositivos, status
   audio/models/       endpoint, formato, notificações
   audio/windows/      MMDevice, IMMNotificationClient, property store, IKsFormatSupport, IPolicyConfig
+                      (formato, habilitar/desabilitar), nome do endpoint
   audio/juce/         inventário e sonda de modo exclusivo com a JUCE
   ipc/                protocolo, servidor de pipe (nativo), cliente (JUCE)
   cli/                comandos e diagnóstico
