@@ -22,7 +22,7 @@ namespace
 ipc::StatusSnapshot sampleStatus (EngineState state)
 {
     ipc::StatusSnapshot s;
-    s.version = "1.0.2";
+    s.version = "1.0.3";
     s.mode = "service";
     s.state = state;
     s.exclusiveProtection = true;
