@@ -692,29 +692,37 @@ void WatchdogEngine::handleIncompatible (const AudioEndpoint& endpoint, const Co
     }
     if (record.leftEnabled)
     {
+        // The user re-enabled it from the Audioslave window: their decision.
         device.action = DeviceAction::leftEnabled;
-        device.reason += "; it kept coming back enabled, so it is left enabled until the settings change";
+        device.reason += "; enabled again from the Audioslave window, so it is left enabled until the settings change";
         deviceState().put (record);
-        notice (key, formatLine (device, target, "Left enabled (came back too often)"));
+        notice (key, formatLine (device, target, "Left enabled (re-enabled by the user in Audioslave)"));
         return;
     }
-    if (static_cast<int> (record.history.size()) >= maxDisablesPerDay)
+    const auto recent = std::count_if (record.history.begin(), record.history.end(),
+                                       [t] (juce::int64 h) { return t - h < loopWindowMs; });
+    if (recent >= maxDisablesPerWindow)
     {
-        record.leftEnabled = true;
+        // A real loop (re-created over and over): wait until the window passes.
         deviceState().put (record);
         device.action = DeviceAction::leftEnabled;
-        device.reason += "; disabled " + juce::String (maxDisablesPerDay)
-                         + " times in 24 h and enabled again each time, so it is left enabled until the settings change";
-        addEvent (DeviceAction::leftEnabled, device, interactive);
-        log.warn (formatLine (device, target, "Left enabled (no disable loop)"));
+        device.reason += "; disabled " + juce::String (static_cast<int> (recent)) + " times in "
+                         + juce::String (loopWindowMs / 60000) + " min and enabled again each time: waiting before disabling it again";
+        if (memory_.notice ("loop|" + endpoint.id, device.reason))
+        {
+            addEvent (DeviceAction::leftEnabled, device, interactive);
+            log.warn (formatLine (device, target, "Waiting (disable loop protection)"));
+        }
         return;
     }
-    if (! record.history.empty() && t - record.history.back() < reapplyCooldownMs)
+    memory_.clearNotice ("loop|" + endpoint.id);
+
+    // Only a connected, active device is disabled (the enumeration may be stale).
+    if (EndpointState live = EndpointState::active; succeeded (options_.admin->getState (endpoint.id, live))
+                                                    && live != EndpointState::active)
     {
-        deviceState().put (record);
-        device.action = DeviceAction::ignore;
-        notice (key, formatLine (device, target, "Waiting (enabled again moments after being disabled; retried after "
-                                                  + juce::String (reapplyCooldownMs / 60000) + " min)"));
+        device.action = DeviceAction::unknown;
+        device.reason = "the device is not active (" + endpointStateName (live) + ")";
         return;
     }
 

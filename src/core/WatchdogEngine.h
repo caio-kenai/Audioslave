@@ -14,9 +14,13 @@
 // not support the chosen format is only reported, or - when the user enabled
 // and confirmed it - disabled (IEndpointAdmin). Audioslave only ever
 // re-enables devices it disabled itself (DeviceStateStore): when they become
-// compatible or the policy is turned off. A device that keeps coming back
-// enabled is disabled again at most maxDisablesPerDay times, never sooner than
-// reapplyCooldownMs after the previous time, so nothing can loop.
+// compatible or the policy is turned off. The policy is kept like any other:
+// an incompatible device that is enabled again (in the Sound panel, by Windows
+// or by its driver) is disabled again at once. Only a real loop - more than
+// maxDisablesPerWindow times within loopWindowMs, e.g. a driver re-creating
+// the device over and over - makes it wait until that window has passed.
+// Devices that are not active (disconnected) or report no formats at all are
+// never judged incompatible.
 
 #include "audio/AudioInterfaces.h"
 #include "audio/models/DeviceChange.h"
@@ -68,8 +72,8 @@ public:
         std::function<juce::int64()> wallClock;
     };
 
-    static constexpr juce::int64 reapplyCooldownMs = 10 * 60 * 1000;
-    static constexpr int maxDisablesPerDay = 3;
+    static constexpr juce::int64 loopWindowMs = 10 * 60 * 1000;
+    static constexpr int maxDisablesPerWindow = 5;
     static constexpr size_t maxEvents = 32;
 
     WatchdogEngine (IAudioEndpointEnumerator& enumerator, IExclusiveModeStore& exclusiveStore,

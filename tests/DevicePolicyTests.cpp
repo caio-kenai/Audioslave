@@ -196,50 +196,65 @@ public:
                 expect (e.id != "user-off");
         }
 
-        beginTest ("No disable loop: cooldown, then at most 3 times a day, then left enabled");
+        beginTest ("Enabled again (Sound panel, Windows, driver): disabled again at once, as a service");
         {
             Rig rig (config (true, true));
-            rig.engine->scanOnce(); // 1st time
-            expectEquals (rig.admin.disableCalls.load(), 2);
-
-            // Windows re-creates it enabled right away: not disabled again during the cooldown.
-            rig.admin.reappear ("cam");
-            rig.wallMs += 1000;
             rig.engine->scanOnce();
-            expect (rig.stateOf ("cam") == EndpointState::active);
             expectEquals (rig.admin.disableCalls.load(), 2);
-
-            // After the cooldown: 2nd and 3rd time.
-            for (int i = 0; i < 2; ++i)
-            {
-                rig.wallMs += WatchdogEngine::reapplyCooldownMs + 1000;
-                rig.engine->scanOnce();
-                expect (rig.stateOf ("cam") == EndpointState::disabled);
-                rig.admin.reappear ("cam");
-            }
-            expectEquals (rig.admin.disableCalls.load(), 4);
-
-            // A 4th time within 24 h: left enabled, reported once.
-            rig.wallMs += WatchdogEngine::reapplyCooldownMs + 1000;
-            const auto r = rig.engine->scanOnce();
-            expect (rig.stateOf ("cam") == EndpointState::active);
-            expect (Rig::find (r.devices, "cam")->action == DeviceAction::leftEnabled);
             for (int i = 0; i < 3; ++i)
             {
-                rig.wallMs += WatchdogEngine::reapplyCooldownMs + 1000;
+                rig.admin.reappear ("cam");
+                rig.wallMs += 30 * 1000; // moments later
+                rig.engine->scanOnce (ScanKind::triggered);
+                expect (rig.stateOf ("cam") == EndpointState::disabled, "not disabled again (" + juce::String (i) + ")");
+            }
+            expectEquals (rig.admin.disableCalls.load(), 5);
+            expect (rig.state.get ("cam")->disabled);
+        }
+
+        beginTest ("No disable loop: a device re-created over and over waits, then is disabled again");
+        {
+            Rig rig (config (true, true));
+            rig.engine->scanOnce(); // 1st
+            for (int i = 0; i < WatchdogEngine::maxDisablesPerWindow - 1; ++i)
+            {
+                rig.admin.reappear ("cam");
+                rig.wallMs += 5 * 1000;
                 rig.engine->scanOnce();
             }
-            expectEquals (rig.admin.disableCalls.load(), 4);
-            int leftEvents = 0;
+            const int calls = rig.admin.disableCalls.load();
+            // Once more within the window: left enabled for now, reported once.
+            for (int i = 0; i < 3; ++i)
+            {
+                rig.admin.reappear ("cam");
+                rig.wallMs += 5 * 1000;
+                const auto r = rig.engine->scanOnce();
+                expect (Rig::find (r.devices, "cam")->action == DeviceAction::leftEnabled);
+            }
+            expectEquals (rig.admin.disableCalls.load(), calls);
+            int loopEvents = 0;
             for (const auto& e : rig.engine->getStatus().events)
-                leftEvents += e.action == DeviceAction::leftEnabled ? 1 : 0;
-            expectEquals (leftEvents, 1);
-
-            // A new decision by the user (settings changed) gives it a new chance.
-            rig.engine->setConfig (config (false, false));
-            rig.engine->setConfig (config (true, true));
+                loopEvents += e.action == DeviceAction::leftEnabled ? 1 : 0;
+            expectEquals (loopEvents, 1);
+            // After the window the policy applies again, without any settings change.
+            rig.wallMs += WatchdogEngine::loopWindowMs;
             rig.engine->scanOnce();
             expect (rig.stateOf ("cam") == EndpointState::disabled);
+        }
+
+        beginTest ("Disconnected devices are never judged incompatible nor disabled");
+        {
+            Rig rig (config (true, true));
+            // Reports no format at all (what a disconnected device answers).
+            rig.fm.supportedBy["cam"] = {};
+            const auto r = rig.engine->scanOnce();
+            expect (Rig::find (r.devices, "cam")->compatibility == Compatibility::unknown);
+            expect (rig.stateOf ("cam") == EndpointState::active);
+            // Unplugged endpoints are not analysed at all.
+            rig.en.endpoints.push_back (endpoint ("bt", EndpointFlow::render, EndpointState::unplugged));
+            const auto list = rig.engine->analyze (config (true, true));
+            expect (Rig::find (list, "bt") == nullptr);
+            expect (Rig::find (list, "cam")->action == DeviceAction::unknown);
         }
 
         beginTest ("A stale enumeration never takes a device Audioslave disabled for enabled again");
@@ -351,7 +366,7 @@ public:
             rig.engine->scanOnce();
             expect (rig.engine->enableDevice ("cam").isEmpty());
             expect (rig.stateOf ("cam") == EndpointState::active);
-            rig.wallMs += WatchdogEngine::reapplyCooldownMs * 10;
+            rig.wallMs += WatchdogEngine::loopWindowMs * 10;
             rig.engine->scanOnce();
             expect (rig.stateOf ("cam") == EndpointState::active);
         }

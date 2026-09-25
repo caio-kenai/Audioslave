@@ -554,7 +554,7 @@ juce::PopupMenu StatusWindow::deviceMenu (const EndpointStatus& device, bool con
     if (device.customName)
         item (deviceReleaseName, utf8 ("Deixar de manter este nome"), theme::Icon::refresh);
     if (device.disabledByAudioslave)
-        item (deviceEnable, utf8 ("Reativar dispositivo"), theme::Icon::play);
+        item (deviceEnable, utf8 ("Reativar e manter habilitado"), theme::Icon::play);
     return menu;
 }
 
