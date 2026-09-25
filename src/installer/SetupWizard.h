@@ -29,7 +29,8 @@ private:
     void startInstall();
     void browse();
     void updateFormatControls();
-    // With the disable option: shows what it would disable and asks first.
+    // With format standardization: previews every device and asks first when
+    // something deserves a decision (as the Configurações screen does).
     void confirmThenInstall();
     void finished (bool ok, const juce::String& error);
 

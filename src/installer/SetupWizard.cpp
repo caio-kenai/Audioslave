@@ -175,18 +175,21 @@ void SetupWizard::updateFormatControls()
 
 void SetupWizard::confirmThenInstall()
 {
-    if (! format_.getToggleState() || ! disable_.getToggleState())
+    if (! format_.getToggleState())
     {
         startInstall();
         return;
     }
 
-    // Preview on this machine, exactly as the service will judge it.
+    // Preview on this machine, exactly as the service will judge it, with the
+    // same alerts as the Configurações screen (bit-depth limits, devices
+    // without the sample rate, devices that will be disabled).
+    const bool disable = disable_.getToggleState();
     ipc::AudioSettings settings;
     settings.formatStandardization = true;
     settings.sampleRate = supportedSampleRates[static_cast<size_t> (juce::jmax (0, rate_.getSelectedItemIndex()))];
     settings.bitDepth = supportedBitDepths[static_cast<size_t> (juce::jmax (0, bits_.getSelectedItemIndex()))];
-    settings.disableIncompatibleDevices = true;
+    settings.disableIncompatibleDevices = disable;
 
     std::vector<DeviceReport> devices;
     {
@@ -201,23 +204,33 @@ void SetupWizard::confirmThenInstall()
         candidate.formatStandardization = true;
         candidate.sampleRate = settings.sampleRate;
         candidate.bitDepth = settings.bitDepth;
-        candidate.disableIncompatibleDevices = true;
+        candidate.disableIncompatibleDevices = disable;
         WatchdogEngine engine (enumerator, exclusive, format, candidate, engineOptions);
         devices = engine.analyze (candidate);
     }
 
     auto preview = buildPreview (settings, devices);
+    // Turning the policy on is always confirmed, even with nothing to disable now.
+    if (disable && ! preview.disablesDevices)
+    {
+        preview.needsConfirmation = true;
+        preview.title = utf8 ("Desabilitar dispositivos incompatíveis?");
+        preview.message = utf8 ("Nenhum dispositivo conectado agora será desabilitado. Dispositivos conectados depois que "
+                                "não suportarem ")
+                          + juce::String (settings.sampleRate) + " Hz / " + juce::String (settings.bitDepth)
+                          + utf8 (" bits serão desabilitados automaticamente, com aviso e registro no log.");
+    }
+    if (! preview.needsConfirmation)
+    {
+        startInstall();
+        return;
+    }
     theme::DialogOptions options;
-    options.icon = juce::MessageBoxIconType::WarningIcon;
-    options.title = preview.disablesDevices ? preview.title : utf8 ("Desabilitar dispositivos incompatíveis?");
-    options.message = preview.disablesDevices
-                          ? preview.message
-                          : utf8 ("Nenhum dispositivo conectado agora será desabilitado. Dispositivos conectados depois que "
-                                  "não suportarem ")
-                                + juce::String (settings.sampleRate) + " Hz / " + juce::String (settings.bitDepth)
-                                + utf8 (" bits serão desabilitados automaticamente, com aviso e registro no log.");
+    options.icon = disable ? juce::MessageBoxIconType::WarningIcon : juce::MessageBoxIconType::QuestionIcon;
+    options.title = preview.title;
+    options.message = preview.message;
     options.buttons = { "Continuar", "Cancelar" };
-    options.destructive = true;
+    options.destructive = disable;
     if (preview.details.isNotEmpty())
     {
         auto details = std::make_unique<juce::TextEditor>();
